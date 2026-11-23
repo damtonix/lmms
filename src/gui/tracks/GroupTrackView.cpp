@@ -53,6 +53,10 @@ GroupTrackView::GroupTrackView(GroupTrack* gt, TrackContainerView* tcv) :
 	m_colorButton->setToolTip(tr("Gruppenfarbe w\xc3\xa4hlen"));
 	connect(m_colorButton, &QToolButton::clicked, this, &GroupTrackView::chooseColor);
 
+	// the row is already visible at this point, so children must be shown explicitly
+	m_collapseButton->show();
+	m_colorButton->show();
+
 	connect(gt, &GroupTrack::collapsedChanged, this, &GroupTrackView::updateCollapsedState);
 	connect(gt, &Track::colorChanged, this, &GroupTrackView::updateColor);
 	connect(gt->getMutedModel(), &BoolModel::dataChanged, this, &GroupTrackView::notifyMembers);

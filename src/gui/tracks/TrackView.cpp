@@ -30,6 +30,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QStyleOption>
+#include <QTimer>
 
 
 #include "AudioEngine.h"
@@ -112,6 +113,9 @@ TrackView::TrackView(Track* track, TrackContainerView* tcv)
 	}
 
 	m_trackContainerView->addTrackView( this );
+
+	// Custom: apply the group indent once the derived view has created its widgets
+	QTimer::singleShot(0, this, &TrackView::applyGroupIndent);
 }
 
 
@@ -377,7 +381,11 @@ void TrackView::applyGroupIndent()
 	const int indent = group != nullptr ? GroupIndent : 0;
 	auto settings = &m_trackSettingsWidget;
 
-	if (indent != m_groupIndent)
+	// The derived view builds its widgets after the TrackView constructor; wait until they exist
+	auto children = settings->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly);
+	children.removeAll(m_groupIndentBar);
+	const bool settingsBuilt = settings->layout() != nullptr || !children.isEmpty();
+	if (indent != m_groupIndent && settingsBuilt)
 	{
 		const int delta = indent - m_groupIndent;
 		if (auto layout = settings->layout())
