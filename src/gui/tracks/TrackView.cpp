@@ -329,6 +329,18 @@ void TrackView::wheelEvent(QWheelEvent* we)
 
 
 
+void TrackView::setTrackSelected(bool selected)
+{
+	if (m_trackSelected == selected) { return; }
+	m_trackSelected = selected;
+	// repaint the whole row incl. the name button
+	for (auto w : findChildren<QWidget*>()) { w->update(); }
+	QWidget::update();
+}
+
+
+
+
 void TrackView::paintEvent( QPaintEvent * pe )
 {
 	QStyleOption opt;

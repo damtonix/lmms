@@ -28,7 +28,11 @@
 
 #include <QMouseEvent>
 
+#include <QPainter>
+#include <QMouseEvent>
+
 #include "ConfigManager.h"
+#include "TrackContainerView.h"
 #include "DeprecationHelper.h"
 #include "embed.h"
 #include "Instrument.h"
@@ -183,6 +187,21 @@ void TrackLabelButton::mouseDoubleClickEvent( QMouseEvent * _me )
 void TrackLabelButton::mouseReleaseEvent( QMouseEvent *_me )
 {
 	const auto globalPos = globalPosition(_me);
+	if (_me->button() == Qt::LeftButton && (_me->modifiers() & Qt::ControlModifier)
+		&& m_buttonRect.contains(globalPos, true) && m_renameLineEdit->isHidden())
+	{
+		// Custom: track multi-selection instead of opening the instrument window
+		auto tcv = m_trackView->trackContainerView();
+		if (_me->modifiers() & Qt::ShiftModifier) { tcv->selectTrackRange(m_trackView); }
+		else { tcv->toggleTrackSelection(m_trackView); }
+		setDown(false);
+		_me->accept();
+		return;
+	}
+	if (_me->button() == Qt::LeftButton)
+	{
+		m_trackView->trackContainerView()->clearTrackSelection();
+	}
 	if (m_buttonRect.contains(globalPos, true) && m_renameLineEdit->isHidden())
 	{
 		QToolButton::mousePressEvent( _me );
@@ -216,6 +235,17 @@ void TrackLabelButton::paintEvent(QPaintEvent* pe)
 		}
 	}
 	QToolButton::paintEvent(pe);
+
+	if (m_trackView->isTrackSelected())
+	{
+		QPainter p(this);
+		QColor hl = palette().color(QPalette::Highlight);
+		hl.setAlpha(90);
+		p.fillRect(rect(), hl);
+		hl.setAlpha(255);
+		p.setPen(QPen(hl, 2));
+		p.drawRect(rect().adjusted(1, 1, -1, -1));
+	}
 }
 
 
