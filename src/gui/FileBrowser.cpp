@@ -30,7 +30,10 @@
 #include <QCheckBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <algorithm>
 #include <QLineEdit>
+#include <QLabel>
+#include <QSlider>
 #include <QMdiArea>
 #include <QMdiSubWindow>
 #include <QMenu>
@@ -121,6 +124,33 @@ FileBrowser::FileBrowser(Type type, const QString& directories, const QString& f
 	searchWidgetLayout->addWidget( reload_btn );
 
 	addContentWidget( searchWidget );
+
+	// Custom: preview volume slider
+	auto volumeWidget = new QWidget(contentParent());
+	volumeWidget->setFixedHeight(22);
+	auto volumeLayout = new QHBoxLayout(volumeWidget);
+	volumeLayout->setContentsMargins(2, 0, 2, 0);
+	volumeLayout->setSpacing(4);
+	auto volumeIcon = new QLabel(volumeWidget);
+	volumeIcon->setPixmap(embed::getIconPixmap("speaker", 16, 16));
+	volumeIcon->setToolTip(tr("Lautst\xc3\xa4rke der Vorschau"));
+	m_previewVolumeSlider = new QSlider(Qt::Horizontal, volumeWidget);
+	m_previewVolumeSlider->setRange(0, 100);
+	m_previewVolumeSlider->setValue(static_cast<int>(previewVolume() * 100 + 0.5f));
+	m_previewVolumeSlider->setToolTip(tr("Lautst\xc3\xa4rke der Vorschau"));
+	auto volumeValue = new QLabel(QString("%1%").arg(m_previewVolumeSlider->value()), volumeWidget);
+	volumeValue->setFixedWidth(36);
+	volumeValue->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+	connect(m_previewVolumeSlider, &QSlider::valueChanged, this, [this, volumeValue](int value) {
+		volumeValue->setText(QString("%1%").arg(value));
+		ConfigManager::inst()->setValue("ui", "previewvolume", QString::number(value));
+		m_fileBrowserTreeWidget->setPreviewVolume(value / 100.0f);
+		m_searchTreeWidget->setPreviewVolume(value / 100.0f);
+	});
+	volumeLayout->addWidget(volumeIcon);
+	volumeLayout->addWidget(m_previewVolumeSlider, 1);
+	volumeLayout->addWidget(volumeValue);
+	addContentWidget(volumeWidget);
 
 	m_fileBrowserTreeWidget = new FileBrowserTreeWidget( contentParent() );
 	addContentWidget( m_fileBrowserTreeWidget );
@@ -813,7 +843,11 @@ void FileBrowserTreeWidget::previewFileItem(FileItem* file)
 		qApp->processEvents(QEventLoop::ExcludeUserInputEvents);
 		if (auto buffer = SampleBuffer::fromFile(fileName))
 		{
-			auto s = new SamplePlayHandle(new lmms::Sample{std::move(buffer)});
+			auto sample = new lmms::Sample{std::move(buffer)};
+			// Custom: preview volume from the file browser slider
+			sample->setAmplification(FileBrowser::previewVolume());
+			m_previewSample = sample;
+			auto s = new SamplePlayHandle(sample);
 			s->setDoneMayReturnTrue(false);
 			newPPH = s;
 		}
@@ -865,6 +899,28 @@ void FileBrowserTreeWidget::stopPreview()
 		Engine::audioEngine()->removePlayHandle(m_previewPlayHandle);
 		m_previewPlayHandle = nullptr;
 	}
+	m_previewSample = nullptr;
+}
+
+
+
+
+void FileBrowserTreeWidget::setPreviewVolume(float volume)
+{
+	QMutexLocker previewLocker(&m_pphMutex);
+	if (m_previewPlayHandle != nullptr && m_previewSample != nullptr)
+	{
+		m_previewSample->setAmplification(volume);
+	}
+}
+
+
+
+
+float FileBrowser::previewVolume()
+{
+	const int percent = ConfigManager::inst()->value("ui", "previewvolume", "70").toInt();
+	return std::clamp(percent, 0, 100) / 100.0f;
 }
 
 

@@ -38,6 +38,7 @@
 
 class QCheckBox;
 class QLineEdit;
+class QSlider;
 class QProgressBar;
 
 namespace lmms
@@ -45,6 +46,7 @@ namespace lmms
 
 class InstrumentTrack;
 class PlayHandle;
+class Sample;
 class TrackContainer;
 
 namespace gui
@@ -84,6 +86,9 @@ public:
 	static QDir::Filters dirFilters() { return QDir::AllDirs | QDir::Files | QDir::NoDotAndDotDot | QDir::Hidden; }
 	static QDir::SortFlags sortFlags() { return QDir::LocaleAware | QDir::DirsFirst | QDir::Name | QDir::IgnoreCase; }
 
+	//! Custom: preview volume (0.0 - 1.0) shared by all file browsers
+	static float previewVolume();
+
 private slots:
 	void reloadTree();
 	void expandItems(const QList<QString>& expandedDirs, QTreeWidgetItem* item = nullptr);
@@ -108,6 +113,7 @@ private:
 	FileBrowserTreeWidget * m_searchTreeWidget;
 
 	QLineEdit * m_filterEdit;
+	QSlider* m_previewVolumeSlider = nullptr; //!< Custom
 	Type m_type;
 
 	QProgressBar* m_searchIndicator = nullptr;
@@ -135,6 +141,7 @@ class FileBrowserTreeWidget : public QTreeWidget
 {
 	Q_OBJECT
 public:
+	void setPreviewVolume(float volume); //!< Custom: applies to the running sample preview
 	FileBrowserTreeWidget( QWidget * parent );
 	~FileBrowserTreeWidget() override = default;
 
@@ -170,6 +177,7 @@ private:
 
 	//! This should only be accessed or modified when m_pphMutex is held
 	PlayHandle* m_previewPlayHandle;
+	Sample* m_previewSample = nullptr; //!< Custom: sample of the running preview (owned by the play handle)
 
 	QRecursiveMutex m_pphMutex;
 

@@ -25,7 +25,10 @@
 #include <QFileInfo>
 
 #include "PresetPreviewPlayHandle.h"
+#include <algorithm>
+
 #include "AudioEngine.h"
+#include "ConfigManager.h"
 #include "Engine.h"
 #include "Instrument.h"
 #include "InstrumentTrack.h"
@@ -176,7 +179,8 @@ PresetPreviewPlayHandle::PresetPreviewPlayHandle( const QString & _preset_file, 
 	m_previewNote = NotePlayHandleManager::acquire(
 			s_previewTC->previewInstrumentTrack(), 0,
 			std::numeric_limits<f_cnt_t>::max() / 2,
-				Note( 0, 0, DefaultKey, 100 ) );
+				Note( 0, 0, DefaultKey, static_cast<volume_t>(std::clamp(
+					ConfigManager::inst()->value("ui", "previewvolume", "70").toInt(), 0, 100)) ) );
 
 	setAudioBusHandle(s_previewTC->previewInstrumentTrack()->audioBusHandle());
 
