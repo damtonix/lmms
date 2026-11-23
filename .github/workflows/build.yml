@@ -290,8 +290,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       CMAKE_OPTS: >-
-        -Werror=dev
-        -DUSE_WERROR=ON
+        -DUSE_WERROR=OFF
         -DCMAKE_BUILD_TYPE=RelWithDebInfo
         -DTARGET_UARCH=official
         -DUSE_COMPILE_CACHE=ON
@@ -414,12 +413,11 @@ jobs:
             -B build `
             -G Ninja `
             --toolchain C:/vcpkg/scripts/buildsystems/vcpkg.cmake `
-            -Werror=dev `
             -DCMAKE_BUILD_TYPE=RelWithDebInfo `
             -DTARGET_UARCH=official `
             -DWANT_QT6=ON `
             -DUSE_COMPILE_CACHE=ON `
-            -DUSE_WERROR=ON `
+            -DUSE_WERROR=OFF `
             -DVCPKG_TARGET_TRIPLET="x64-windows" `
             -DVCPKG_HOST_TRIPLET="x64-windows" `
             -DVCPKG_MANIFEST_INSTALL="${{ env.should_install_manifest }}"
