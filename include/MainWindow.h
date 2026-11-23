@@ -258,6 +258,7 @@ private slots:
 	void onToggleMetronome();
 	void onExportProject();
 	void onExportProjectTracks();
+	void onQuickExport(); //!< Custom: render loop to WAV and load it into a new AudioFileProcessor track
 	void onImportProject();
 	void onSongModified();
 	void onProjectFileNameChanged();

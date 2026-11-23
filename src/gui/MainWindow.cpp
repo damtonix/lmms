@@ -32,6 +32,7 @@
 #include <QMdiArea>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QProgressDialog>
 #include <QShortcut>
 #include <QSplitter>
 
@@ -61,6 +62,9 @@
 #include "ProjectJournal.h"
 #include "ProjectNotes.h"
 #include "ProjectRenderer.h"
+#include "RenderManager.h"
+#include "Instrument.h"
+#include "InstrumentTrack.h"
 #include "RecentProjectsMenu.h"
 #include "RemotePluginBase.h"
 #include "SetupDialog.h"
@@ -312,6 +316,9 @@ void MainWindow::finalize()
 	addAction(project_menu, "project_export", tr("E&xport..."),
 		keySequence(Qt::CTRL, Qt::Key_E), &MainWindow::onExportProject);
 
+	addAction(project_menu, "loop_points_on", tr("Schnell-Export (Loop als WAV)..."),
+		keySequence(Qt::CTRL, Qt::ALT, Qt::Key_E), &MainWindow::onQuickExport);
+
 	addAction(project_menu, "project_export", tr("Export &Tracks..."),
 		keySequence(Qt::CTRL, Qt::SHIFT, Qt::Key_E), &MainWindow::onExportProjectTracks);
 
@@ -411,6 +418,10 @@ void MainWindow::finalize()
 	auto project_export = new ToolButton(
 		embed::getIconPixmap("project_export"), tr("Export current project"), this, SLOT(onExportProject()), m_toolBar);
 
+	auto quick_export = new ToolButton(embed::getIconPixmap("loop_points_on"),
+		tr("Schnell-Export: Loop als WAV rendern und als AudioFileProcessor-Spur laden") + " (Ctrl+Alt+E)",
+		this, SLOT(onQuickExport()), m_toolBar);
+
 	m_metronomeToggle = new ToolButton(
 				embed::getIconPixmap( "metronome" ),
 				tr( "Metronome" ),
@@ -426,7 +437,8 @@ void MainWindow::finalize()
 	m_toolBarLayout->addWidget( project_open_recent, 0, 4 );
 	m_toolBarLayout->addWidget( project_save, 0, 5 );
 	m_toolBarLayout->addWidget( project_export, 0, 6 );
-	m_toolBarLayout->addWidget( m_metronomeToggle, 0, 7 );
+	m_toolBarLayout->addWidget( quick_export, 0, 7 );
+	m_toolBarLayout->addWidget( m_metronomeToggle, 0, 8 );
 
 
 	// window-toolbar
@@ -1584,6 +1596,106 @@ void MainWindow::onExportProject()
 void MainWindow::onExportProjectTracks()
 {
 	this->exportProject(true);
+}
+
+void MainWindow::onQuickExport()
+{
+	Song* song = Engine::getSong();
+	const auto& timeline = song->getTimeline(Song::PlayMode::Song);
+	if (!timeline.loopEnabled())
+	{
+		QMessageBox::information(this, tr("Schnell-Export"),
+			tr("Der Schnell-Export funktioniert nur mit aktivem Loop.\n\n"
+				"Aktiviere den Loop im Song-Editor und setze die Loop-Marker um den Bereich, "
+				"der exportiert werden soll."));
+		return;
+	}
+
+	// Ask only for the file name and location
+	FileDialog efd(this);
+	efd.setFileMode(FileDialog::AnyFile);
+	efd.setAcceptMode(FileDialog::AcceptSave);
+	efd.setNameFilters({tr("WAV-Datei (*.wav)")});
+	efd.setDefaultSuffix("wav");
+	efd.setWindowTitle(tr("Schnell-Export: Datei w\xc3\xa4hlen..."));
+	QString dir = ConfigManager::inst()->value("app", "quickexportdir");
+	QString baseName = tr("Loop");
+	const QString& projectFileName = song->projectFileName();
+	if (!projectFileName.isEmpty())
+	{
+		baseName = QFileInfo(projectFileName).completeBaseName() + "-loop";
+		if (dir.isEmpty()) { dir = QFileInfo(projectFileName).absolutePath(); }
+	}
+	if (dir.isEmpty() || !QFileInfo(dir).isDir()) { dir = ConfigManager::inst()->userSamplesDir(); }
+	efd.setDirectory(dir);
+	efd.selectFile(baseName + ".wav");
+
+	if (efd.exec() != QDialog::Accepted || efd.selectedFiles().isEmpty() || efd.selectedFiles()[0].isEmpty())
+	{
+		return;
+	}
+	QString path = efd.selectedFiles()[0];
+	if (!path.endsWith(".wav", Qt::CaseInsensitive)) { path += ".wav"; }
+	ConfigManager::inst()->setValue("app", "quickexportdir", QFileInfo(path).absolutePath());
+
+	// Render between the loop markers with sensible defaults (project sample rate, 24 bit, stereo)
+	const auto outputSettings = OutputSettings{Engine::audioEngine()->outputSampleRate(), 160,
+		OutputSettings::BitDepth::Depth24Bit, OutputSettings::StereoMode::Stereo};
+	auto renderManager = std::make_unique<RenderManager>(outputSettings, ProjectRenderer::ExportFileFormat::Wave, path);
+
+	song->setExportLoop(false);
+	song->setRenderBetweenMarkers(true);
+	song->setLoopRenderCount(1);
+
+	QProgressDialog progress(tr("Schnell-Export l\xc3\xa4uft..."), tr("Abbrechen"), 0, 100, this);
+	progress.setWindowTitle(tr("Schnell-Export"));
+	progress.setWindowModality(Qt::WindowModal);
+	progress.setMinimumDuration(0);
+	progress.setAutoClose(false);
+	progress.setAutoReset(false);
+
+	bool finished = false;
+	connect(renderManager.get(), &RenderManager::progressChanged, &progress, &QProgressDialog::setValue);
+	connect(renderManager.get(), &RenderManager::finished, &progress, [&finished, &progress] {
+		finished = true;
+		progress.accept();
+	});
+
+	renderManager->renderProject();
+	if (!finished) { progress.exec(); }
+
+	if (!finished)
+	{
+		renderManager->abortProcessing();
+		renderManager.reset();
+		song->setRenderBetweenMarkers(false);
+		QFile::remove(path);
+		return;
+	}
+	renderManager.reset();
+	song->setRenderBetweenMarkers(false);
+
+	if (!QFileInfo::exists(path))
+	{
+		QMessageBox::warning(this, tr("Schnell-Export"), tr("Die Datei %1 konnte nicht geschrieben werden.").arg(path));
+		return;
+	}
+
+	// Load the result into a new AudioFileProcessor track
+	auto track = dynamic_cast<InstrumentTrack*>(Track::create(Track::Type::Instrument, song));
+	if (track != nullptr)
+	{
+		if (Instrument* instrument = track->loadInstrument("audiofileprocessor"))
+		{
+			instrument->loadFile(path);
+		}
+		track->setName(QFileInfo(path).completeBaseName());
+	}
+	song->setModified();
+
+	TextFloat::displayMessage(tr("Schnell-Export fertig"),
+		tr("%1 wurde exportiert und als neue Spur geladen.").arg(QFileInfo(path).fileName()),
+		embed::getIconPixmap("project_export", 24, 24), 3000);
 }
 
 void MainWindow::onImportProject()
