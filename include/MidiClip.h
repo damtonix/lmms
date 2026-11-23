@@ -59,6 +59,15 @@ public:
 
 	void updateLength() override;
 
+	// -- Custom: virtual loop ------------------------
+	//! Length (in ticks, note time) of the original part that is repeated; 0 = no loop
+	tick_t loopLength() const { return m_loopLength; }
+	void setLoopLength(tick_t length);
+	bool isLooped() const { return m_loopLength > 0; }
+	//! End of the editable note range (note time): the loop length if looped, else the clip end
+	TimePos noteRangeEnd() const;
+	// ------------------------------------------------
+
 	// note management
 	Note * addNote( const Note & _new_note, const bool _quant_pos = true );
 
@@ -154,6 +163,7 @@ private:
 	// data-stuff
 	NoteVector m_notes;
 	int m_steps;
+	tick_t m_loopLength = 0; //!< Custom: virtual loop
 
 	MidiClip * adjacentMidiClipByOffset(int offset) const;
 

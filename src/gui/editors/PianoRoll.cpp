@@ -901,7 +901,7 @@ void PianoRoll::setCurrentMidiClip( MidiClip* newMidiClip )
 	m_timeLine->timeline()->setTicks(std::clamp(
 		m_timeLine->timeline()->ticks(),
 		std::max(0, -m_midiClip->startTimeOffset()),
-		m_midiClip->length() - m_midiClip->startTimeOffset()
+		static_cast<int>(m_midiClip->noteRangeEnd())
 	));
 
 	// resizeEvent() does the rest for us (scrolling, range-checking
@@ -3854,7 +3854,7 @@ void PianoRoll::paintEvent(QPaintEvent * pe )
 
 		// draw clip bounds
 		p.fillRect(
-			xCoordOfTick(m_midiClip->length() - m_midiClip->startTimeOffset()),
+			xCoordOfTick(m_midiClip->noteRangeEnd()),
 			PR_TOP_MARGIN,
 			width() - 10,
 			noteEditBottom(),
@@ -3938,7 +3938,7 @@ void PianoRoll::paintEvent(QPaintEvent * pe )
 	p.drawRect(x + m_whiteKeyWidth, y, w, h);
 
 	// TODO: Get this out of paint event
-	int l = ( hasValidMidiClip() )? (int) m_midiClip->length() - m_midiClip->startTimeOffset() : 0;
+	int l = ( hasValidMidiClip() )? (int) m_midiClip->noteRangeEnd() : 0;
 
 	// reset scroll-range
 	if( m_leftRightScroll->maximum() != l )

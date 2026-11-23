@@ -43,6 +43,7 @@
 #include "GuiApplication.h"
 #include "KeyboardShortcuts.h"
 #include "lmms_math.h"
+#include "MidiClip.h"
 #include "MidiClipView.h"
 #include "PatternClip.h"
 #include "PatternStore.h"
@@ -562,6 +563,11 @@ void ClipView::mousePressEvent( QMouseEvent * me )
 					? tr("Press <%1> or <Alt> for unquantized splitting.\nPress <Shift> for destructive splitting.")
 					: tr("Press <%1> or <Alt> for unquantized splitting.");
 			}
+			else if (dynamic_cast<MidiClip*>(m_clip) && !fixedClips())
+			{
+				hint = tr("Press <%1> or <Alt> for unquantized resizing.") + "\n"
+					+ tr("<Shift> am rechten Rand: Clip virtuell wiederholen (Loop)");
+			}
 			else
 			{
 				hint = tr("Press <%1> or <Alt> for unquantized resizing.");
@@ -708,8 +714,37 @@ void ClipView::mouseMoveEvent( QMouseEvent * me )
 			// The clip's new length
 			TimePos l = static_cast<int>(pos.x() * TimePos::ticksPerBar() / ppb);
 
+			auto midiClip = dynamic_cast<MidiClip*>(m_clip);
+			// Custom: Shift-drag on the right edge of a MIDI clip repeats it virtually (loop)
+			if (midiClip && !fixedClips() && (me->modifiers() & Qt::ShiftModifier) && !unquantizedModHeld(me))
+			{
+				const int offset = midiClip->startTimeOffset();
+				// The original part: the existing loop or the clip as it was when the drag started
+				const tick_t original = midiClip->isLooped()
+					? midiClip->loopLength()
+					: static_cast<tick_t>(m_initialClipEnd - m_initialClipPos) - offset;
+				const TimePos originalClipLength = original + offset;
+
+				TimePos newLength = TimePos(l).quantize(snapSize);
+				if (newLength <= originalClipLength)
+				{
+					// dragged back onto the original: remove the loop
+					midiClip->setLoopLength(0);
+					newLength = originalClipLength;
+				}
+				else
+				{
+					midiClip->setLoopLength(original);
+				}
+				if (newLength != m_clip->length()) { m_clip->changeLength(newLength); }
+				m_clip->setAutoResize(false);
+
+				s_textFloat->setTitle(midiClip->isLooped()
+					? tr("Loop: %1x").arg(QString::number((newLength - offset) / static_cast<double>(original), 'f', 2))
+					: tr("Loop: aus"));
+			}
 			// If the user is holding alt, or pressed ctrl after beginning the drag, don't quantize
-			if ( unquantizedModHeld(me) )
+			else if ( unquantizedModHeld(me) )
 			{	// We want to preserve this adjusted offset,
 				// even if the user switches to snapping later
 				setInitialPos( m_initialMousePos );

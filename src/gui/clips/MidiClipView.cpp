@@ -218,6 +218,18 @@ void MidiClipView::constructContextMenu( QMenu * _cm )
 	_cm->addAction( embed::getIconPixmap( "edit_erase" ),
 			tr( "Clear all notes" ), m_clip, SLOT(clear()));
 
+	// Custom: virtual loop
+	if (m_clip->isLooped())
+	{
+		_cm->addAction(embed::getIconPixmap("loop_points_off"), tr("Loop entfernen"), this, [this] {
+			m_clip->addJournalCheckPoint();
+			const TimePos original = m_clip->loopLength() + m_clip->startTimeOffset();
+			m_clip->setLoopLength(0);
+			m_clip->changeLength(original);
+			Engine::getSong()->setModified();
+		});
+	}
+
 	if (canMergeSelection(getClickedClips()))
 	{
 		_cm->addAction(
@@ -779,14 +791,24 @@ void MidiClipView::paintEvent( QPaintEvent * )
 
 		float const noteHeight = 1. / adjustedNoteRange;
 
+		// Custom: virtual loop – draw the notes of the original part once per repetition
+		const tick_t loopLen = m_clip->loopLength();
+		const int repetitions = loopLen > 0
+			? std::max<int>(1, (m_clip->length() - offset + loopLen - 1) / loopLen)
+			: 1;
+
 		// scan through all the notes and draw them on the clip
+		for (int repetition = 0; repetition < repetitions; ++repetition)
 		for (Note const * currentNote : noteCollection)
 		{
+			if (loopLen > 0 && currentNote->pos() >= loopLen) { continue; }
+			p.setOpacity(repetition == 0 ? 1.0 : 0.55);
+
 			// Map to 0, 1, 2, ...
 			int mappedNoteKey = currentNote->key() - minKey;
 			int invertedMappedNoteKey = adjustedNoteRange - mappedNoteKey - 1;
 
-			float const noteStartX = (currentNote->pos() + offset) * tickLength;
+			float const noteStartX = (currentNote->pos() + repetition * loopLen + offset) * tickLength;
 			float const noteLength = currentNote->length() * tickLength;
 
 			float const noteStartY = invertedMappedNoteKey * noteHeight;
@@ -804,7 +826,33 @@ void MidiClipView::paintEvent( QPaintEvent * )
 			}
 		}
 
+		p.setOpacity(1.0);
 		p.restore();
+	}
+
+	// Custom: mark the virtual loop part so it stands out from the original
+	if (m_clip->isLooped() && !fixedClips())
+	{
+		const tick_t loopLen = m_clip->loopLength();
+		const float pxPerTick = pixelsPerBar / TimePos::ticksPerBar();
+		const int loopStartX = x_base + static_cast<int>((loopLen + offset) * pxPerTick);
+		if (loopStartX < width())
+		{
+			// darker, hatched background for the repeated part
+			p.fillRect(QRect(loopStartX, 0, width() - loopStartX, height()), QColor(0, 0, 0, 70));
+			p.fillRect(QRect(loopStartX, 0, width() - loopStartX, height()),
+				QBrush(QColor(255, 255, 255, 28), Qt::BDiagPattern));
+
+			// a bright separator with a loop symbol at every repetition start
+			const QPixmap loopIcon = embed::getIconPixmap("loop_points_on", 12, 12);
+			for (tick_t t = loopLen; t < m_clip->length() - offset; t += loopLen)
+			{
+				const int x = x_base + static_cast<int>((t + offset) * pxPerTick);
+				p.setPen(QPen(c.lighter(170), 2));
+				p.drawLine(x, 0, x, height());
+				p.drawPixmap(x + 2, height() - loopIcon.height() - 3, loopIcon);
+			}
+		}
 	}
 
 	// bar lines

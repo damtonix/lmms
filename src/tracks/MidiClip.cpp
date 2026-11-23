@@ -59,7 +59,8 @@ MidiClip::MidiClip( const MidiClip& other ) :
 	Clip(other),
 	m_instrumentTrack( other.m_instrumentTrack ),
 	m_clipType( other.m_clipType ),
-	m_steps( other.m_steps )
+	m_steps( other.m_steps ),
+	m_loopLength( other.m_loopLength )
 {
 	for (const auto& note : other.m_notes)
 	{
@@ -124,8 +125,44 @@ void MidiClip::init()
 
 
 
+void MidiClip::setLoopLength(tick_t length)
+{
+	length = std::max<tick_t>(0, length);
+	if (m_loopLength == length) { return; }
+	m_loopLength = length;
+	emit dataChanged();
+}
+
+
+
+
+TimePos MidiClip::noteRangeEnd() const
+{
+	return isLooped() ? TimePos(m_loopLength) : TimePos(length() - startTimeOffset());
+}
+
+
+
+
 void MidiClip::updateLength()
 {
+	// Custom: a looped clip keeps its total length; grow the original part if notes were added beyond it
+	if (isLooped())
+	{
+		tick_t maxEnd = 0;
+		for (const auto& note : m_notes)
+		{
+			if (note->length() > 0) { maxEnd = std::max<tick_t>(maxEnd, note->endPos()); }
+		}
+		if (maxEnd > m_loopLength)
+		{
+			m_loopLength = TimePos(maxEnd).nextFullBar() * TimePos::ticksPerBar();
+			if (length() - startTimeOffset() < m_loopLength) { changeLength(m_loopLength + startTimeOffset()); }
+			emit dataChanged();
+		}
+		return;
+	}
+
 	// If the clip hasn't already been manually resized, automatically resize it.
 	if (getAutoResize())
 	{
@@ -450,6 +487,7 @@ void MidiClip::exportToXML(QDomDocument& doc, QDomElement& midiClipElement, bool
 	midiClipElement.setAttribute("muted", isMuted());
 	midiClipElement.setAttribute("steps", m_steps);
 	midiClipElement.setAttribute("len", length());
+	if (isLooped()) { midiClipElement.setAttribute("looplen", m_loopLength); }
 
 	// now save settings of all notes
 	for (auto& note : m_notes)
@@ -526,6 +564,7 @@ void MidiClip::loadSettings( const QDomElement & _this )
 	
 	setAutoResize(_this.attribute("autoresize", "1").toInt());
 	setStartTimeOffset(_this.attribute("off").toInt());
+	m_loopLength = std::max(0, _this.attribute("looplen", "0").toInt());
 
 	emit dataChanged();
 }

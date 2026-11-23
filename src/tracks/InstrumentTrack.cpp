@@ -739,6 +739,24 @@ bool InstrumentTrack::play( const TimePos & _start, const f_cnt_t _frames,
 			cur_start -= c->startPosition() + c->startTimeOffset();
 		}
 
+		// Custom: virtual loop. Map the position into the original part and
+		// shift the clip end accordingly; only notes of the original part repeat.
+		const tick_t loopLen = c->loopLength();
+		TimePos clipEnd = c->length() - c->startTimeOffset();
+		TimePos loopShift = 0;
+		TimePos noteLimit = clipEnd;
+		if (loopLen > 0)
+		{
+			if (cur_start >= loopLen)
+			{
+				loopShift = (cur_start / loopLen) * loopLen;
+				cur_start -= loopShift;
+				clipEnd -= loopShift;
+			}
+			noteLimit = std::min<tick_t>(clipEnd, loopLen);
+		}
+		const bool atClipStart = loopShift == 0 && cur_start == -c->startTimeOffset();
+
 		// get all notes from the given clip...
 		const NoteVector & notes = c->notes();
 		// ...and set our index to zero
@@ -756,19 +774,19 @@ bool InstrumentTrack::play( const TimePos & _start, const f_cnt_t _frames,
 			}
 		}
 
-		while (nit != notes.end() && (*nit)->pos() < c->length() - c->startTimeOffset())
+		while (nit != notes.end() && (*nit)->pos() < noteLimit)
 		{
 			const auto currentNote = *nit;
 			// Skip any notes note at the current time pos or not overlapping with the start.
 			if (!(currentNote->pos() == cur_start
-				|| (cur_start == -c->startTimeOffset() && (*nit)->pos() < cur_start && (*nit)->endPos() > cur_start)))
+				|| (atClipStart && (*nit)->pos() < cur_start && (*nit)->endPos() > cur_start)))
 			{
 				++nit;
 				continue;
 			}
 
 			// Calculate the overlap of the note over the clip end.
-			const auto noteOverlap = std::max(0, currentNote->endPos() - (c->length() - c->startTimeOffset()));
+			const auto noteOverlap = std::max(0, currentNote->endPos() - clipEnd);
 			// If the note is a Step Note, frames will be 0 so the NotePlayHandle
 			// plays for the whole length of the sample
 			const auto noteFrames = currentNote->type() == Note::Type::Step
@@ -782,7 +800,7 @@ bool InstrumentTrack::play( const TimePos & _start, const f_cnt_t _frames,
 			{
 				// then set song-global offset of clip in order to
 				// properly perform the note detuning
-				notePlayHandle->setSongGlobalParentOffset( c->startPosition() + c->startTimeOffset());
+				notePlayHandle->setSongGlobalParentOffset( c->startPosition() + c->startTimeOffset() + loopShift);
 			}
 
 			Engine::audioEngine()->addPlayHandle( notePlayHandle );
