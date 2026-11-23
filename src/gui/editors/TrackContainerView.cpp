@@ -28,10 +28,6 @@
 #include <QLayout>
 #include <QScrollBar>
 #include <QWheelEvent>
-#include <QKeyEvent>
-#include <QMessageBox>
-#include <QCheckBox>
-#include "ConfigManager.h"
 
 #include "TrackContainer.h"
 #include "AudioEngine.h"
@@ -174,7 +170,6 @@ void TrackContainerView::removeTrackView( TrackView * _tv )
 	int index = m_trackViews.indexOf( _tv );
 	if( index != -1 )
 	{
-		if (m_lastSelectedTrackView == _tv) { m_lastSelectedTrackView = nullptr; }
 		m_trackViews.removeAt( index );
 
 		disconnect(_tv->getTrackContentWidget());
@@ -355,130 +350,8 @@ void TrackContainerView::setPixelsPerBar( int ppb )
 
 
 
-QList<TrackView*> TrackContainerView::selectedTrackViews() const
-{
-	QList<TrackView*> result;
-	for (auto tv : m_trackViews)
-	{
-		if (tv->isTrackSelected()) { result.append(tv); }
-	}
-	return result;
-}
-
-
-
-
-bool TrackContainerView::hasSelectedTracks() const
-{
-	for (auto tv : m_trackViews)
-	{
-		if (tv->isTrackSelected()) { return true; }
-	}
-	return false;
-}
-
-
-
-
-void TrackContainerView::toggleTrackSelection(TrackView* tv)
-{
-	tv->setTrackSelected(!tv->isTrackSelected());
-	m_lastSelectedTrackView = tv->isTrackSelected() ? tv : nullptr;
-	setFocus();
-}
-
-
-
-
-void TrackContainerView::selectTrackRange(TrackView* tv)
-{
-	const int to = m_trackViews.indexOf(tv);
-	const int from = m_lastSelectedTrackView ? m_trackViews.indexOf(m_lastSelectedTrackView) : -1;
-	if (from < 0 || to < 0)
-	{
-		toggleTrackSelection(tv);
-		return;
-	}
-	for (int i = std::min(from, to); i <= std::max(from, to); ++i)
-	{
-		m_trackViews[i]->setTrackSelected(true);
-	}
-	m_lastSelectedTrackView = tv;
-	setFocus();
-}
-
-
-
-
-void TrackContainerView::clearTrackSelection()
-{
-	for (auto tv : m_trackViews) { tv->setTrackSelected(false); }
-	m_lastSelectedTrackView = nullptr;
-}
-
-
-
-
-bool TrackContainerView::deleteSelectedTracks()
-{
-	const auto selected = selectedTrackViews();
-	if (selected.isEmpty()) { return false; }
-
-	if (ConfigManager::inst()->value("ui", "trackdeletionwarning", "1").toInt())
-	{
-		QStringList names;
-		for (auto tv : selected) { names << tv->getTrack()->name(); }
-		QMessageBox mb(this);
-		mb.setWindowTitle(tr("Confirm removal"));
-		mb.setIcon(QMessageBox::Warning);
-		mb.setText(tr("After removing tracks, they can not be recovered. "
-			"Are you sure you want to remove these %1 track(s)?").arg(selected.size()));
-		mb.setDetailedText(names.join("\n"));
-		auto askAgain = new QCheckBox(tr("Don't ask again"), &mb);
-		mb.setCheckBox(askAgain);
-		mb.addButton(QMessageBox::Cancel);
-		mb.addButton(QMessageBox::Ok);
-		mb.setDefaultButton(QMessageBox::Cancel);
-		if (mb.exec() != QMessageBox::Ok) { return false; }
-		if (askAgain->isChecked())
-		{
-			ConfigManager::inst()->setValue("ui", "trackdeletionwarning", "0");
-		}
-	}
-
-	for (auto tv : selected) { deleteTrackView(tv); }
-	m_lastSelectedTrackView = nullptr;
-	return true;
-}
-
-
-
-
-void TrackContainerView::keyPressEvent(QKeyEvent* ke)
-{
-	if ((ke->key() == Qt::Key_Delete || ke->key() == Qt::Key_Backspace)
-		&& !(ke->modifiers() & Qt::ShiftModifier) && hasSelectedTracks())
-	{
-		deleteSelectedTracks();
-		ke->accept();
-	}
-	else if (ke->key() == Qt::Key_Escape && hasSelectedTracks())
-	{
-		clearTrackSelection();
-		ke->accept();
-	}
-	else
-	{
-		QWidget::keyPressEvent(ke);
-	}
-}
-
-
-
-
 void TrackContainerView::clearAllTracks()
 {
-	m_lastSelectedTrackView = nullptr;
 	while( !m_trackViews.empty() )
 	{
 		TrackView * tv = m_trackViews.takeLast();

@@ -142,16 +142,6 @@ public:
 
 	void clearAllTracks();
 
-	// -- Custom: multi-track selection ---------------
-	QList<TrackView*> selectedTrackViews() const;
-	bool hasSelectedTracks() const;
-	void toggleTrackSelection(TrackView* tv);
-	void selectTrackRange(TrackView* tv);
-	void clearTrackSelection();
-	//! Removes all selected tracks after one confirmation. Returns true if tracks were removed.
-	bool deleteSelectedTracks();
-	// -------------------------------------------------------
-
 	QString nodeName() const override
 	{
 		return "trackcontainerview";
@@ -177,8 +167,6 @@ public slots:
 
 protected:
 	static const int DEFAULT_PIXELS_PER_BAR = 128;
-
-	void keyPressEvent(QKeyEvent* ke) override;
 
 	TimePos m_currentPosition;
 
@@ -209,8 +197,6 @@ private:
 	float m_ppb;
 
 	RubberBand * m_rubberBand;
-
-	TrackView* m_lastSelectedTrackView = nullptr;
 
 signals:
 	void positionChanged( const lmms::TimePos & _pos );

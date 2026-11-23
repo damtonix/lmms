@@ -106,10 +106,6 @@ public:
 		return m_action == Action::Move;
 	}
 
-	//! Custom: multi-track selection (Ctrl+click on the track name)
-	bool isTrackSelected() const { return m_trackSelected; }
-	void setTrackSelected(bool selected);
-
 	//! @brief Update this track View and all its content objects.
 	virtual void update();
 
@@ -217,7 +213,6 @@ private:
 	TrackContentWidget m_trackContentWidget;
 
 	Action m_action = Action::None;
-	bool m_trackSelected = false;
 
 	virtual FadeButton * getActivityIndicator()
 	{

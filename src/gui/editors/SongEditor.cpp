@@ -466,13 +466,6 @@ void SongEditor::toggleProportionalSnap()
 void SongEditor::keyPressEvent( QKeyEvent * ke )
 {
 	bool isShiftPressed = ke->modifiers() & Qt::ShiftModifier;
-	// Custom: selected tracks (Ctrl+click on track name) are removed with Delete/Backspace
-	if (hasSelectedTracks() && !isShiftPressed
-		&& (ke->key() == Qt::Key_Delete || ke->key() == Qt::Key_Backspace || ke->key() == Qt::Key_Escape))
-	{
-		TrackContainerView::keyPressEvent(ke);
-		return;
-	}
 	if( isShiftPressed &&
 						( ke->key() == Qt::Key_Insert || ke->key() == Qt::Key_Enter || ke->key() == Qt::Key_Return ) )
 	{
