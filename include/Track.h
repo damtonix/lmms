@@ -40,6 +40,7 @@ namespace lmms
 
 class TimePos;
 class TrackContainer;
+class GroupTrack;
 class Clip;
 
 
@@ -66,9 +67,23 @@ char const *const FILENAME_FILTER = "[\\0000-\x1f\"*/:<>?\\\\|\x7f]";
 class LMMS_EXPORT Track : public Model, public JournallingObject
 {
 	Q_OBJECT
-	mapPropertyFromModel(bool,isMuted,setMuted,m_mutedModel);
 	mapPropertyFromModel(bool,isSolo,setSolo,m_soloModel);
 public:
+	//! Effective mute state: muted itself or muted through its group
+	bool isMuted() const;
+public slots:
+	void setMuted(const bool val) { m_mutedModel.setValue(val); }
+public:
+	//! Own mute button state (ignores group)
+	bool isMutedSelf() const { return m_mutedModel.value(); }
+
+	// -- Custom: track groups ------------------------
+	const QString& groupId() const { return m_groupId; }
+	void setGroupId(const QString& id);
+	//! The group track this track belongs to, or nullptr
+	GroupTrack* group() const;
+	// ------------------------------------------------
+
 	using clipVector = std::vector<Clip*>;
 
 	enum class Type
@@ -80,6 +95,7 @@ public:
 		Video,
 		Automation,
 		HiddenAutomation,
+		Group, //!< Custom: folder-like group of tracks (song editor only)
 		Count
 	} ;
 
@@ -322,6 +338,8 @@ private:
 	
 	std::optional<QColor> m_color;
 
+	QString m_groupId;
+
 	friend class gui::TrackView;
 
 
@@ -330,6 +348,7 @@ signals:
 	void nameChanged();
 	void clipAdded( lmms::Clip * );
 	void colorChanged();
+	void groupChanged();
 } ;
 
 

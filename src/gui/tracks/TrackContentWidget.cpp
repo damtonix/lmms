@@ -461,6 +461,7 @@ bool TrackContentWidget::pasteSelection( TimePos clipPos, const QMimeData * md, 
 		if (offset == 0 && initialTrackIndex == currentTrackIndex) { pos += shift; }
 
 		Clip * clip = t->createClip( pos );
+		if (clip == nullptr) { continue; } // e.g. group tracks
 		clip->restoreState( clipElement );
 		clip->movePosition(pos); // Because we restored the state, we need to move the Clip again.
 		if( wasSelection )
@@ -510,7 +511,8 @@ void TrackContentWidget::mousePressEvent( QMouseEvent * me )
 	}
 	// For an unmodified click, create a new Clip
 	else if( me->button() == Qt::LeftButton &&
-			!m_trackView->trackContainerView()->fixedClips() )
+			!m_trackView->trackContainerView()->fixedClips() &&
+			getTrack()->type() != Track::Type::Group )
 	{
 		QVector<selectableObject*> so =  m_trackView->trackContainerView()->rubberBand()->selectedObjects();
 		for( int i = 0; i < so.count(); ++i )

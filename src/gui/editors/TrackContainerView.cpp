@@ -32,6 +32,7 @@
 #include "TrackContainer.h"
 #include "AudioEngine.h"
 #include "DataFile.h"
+#include "GroupTrack.h"
 #include "MainWindow.h"
 #include "FileBrowser.h"
 #include "ImportFilter.h"
@@ -258,7 +259,9 @@ void TrackContainerView::realignTracks()
 {
 	for (const auto& trackView : m_trackViews)
 	{
-		trackView->show();
+		// Custom: hide members of collapsed groups
+		const auto group = trackView->getTrack()->group();
+		trackView->setVisible(group == nullptr || !group->isCollapsed());
 		trackView->update();
 	}
 
@@ -289,6 +292,13 @@ void TrackContainerView::deleteTrackView( TrackView * _tv )
 	//m_tc->addJournalCheckPoint();
 
 	Track * t = _tv->getTrack();
+
+	// Custom: deleting a group releases its members
+	if (t->type() == Track::Type::Group)
+	{
+		for (auto member : static_cast<GroupTrack*>(t)->members()) { member->setGroupId(QString()); }
+	}
+
 	removeTrackView( _tv );
 	delete _tv;
 
@@ -310,6 +320,7 @@ const TrackView * TrackContainerView::trackViewAt( const int _y ) const
 
 	for (const auto& trackView : m_trackViews)
 	{
+		if (trackView->isHidden()) { continue; }
 		const int y_cnt1 = y_cnt;
 		y_cnt += trackView->height();
 		if (abs_y >= y_cnt1 && abs_y < y_cnt) { return trackView; }
@@ -345,6 +356,66 @@ void TrackContainerView::setPixelsPerBar( int ppb )
 	{
 		trackView->getTrackContentWidget()->updateBackground();
 	}
+}
+
+
+
+
+void TrackContainerView::regroupTrackViews()
+{
+	// Build the target order: each group immediately followed by its members (keeping their relative order)
+	QList<TrackView*> target;
+	for (auto tv : m_trackViews)
+	{
+		if (tv->getTrack()->group() != nullptr) { continue; } // placed together with its group
+		target.append(tv);
+		if (tv->getTrack()->type() == Track::Type::Group)
+		{
+			for (auto member : m_trackViews)
+			{
+				if (member->getTrack()->group() == tv->getTrack()) { target.append(member); }
+			}
+		}
+	}
+	if (target.size() != m_trackViews.size() || target == m_trackViews) { return; }
+
+	// Apply using adjacent moves (same mechanism as dragging a track)
+	for (int i = 0; i < target.size(); ++i)
+	{
+		for (int j = m_trackViews.indexOf(target[i]); j > i; --j)
+		{
+			moveTrackView(target[i], j - 1);
+		}
+	}
+	realignTracks();
+}
+
+
+
+
+void TrackContainerView::createGroupForTrack(TrackView* tv)
+{
+	auto group = static_cast<GroupTrack*>(Track::create(Track::Type::Group, m_tc));
+	TrackView* groupView = createTrackView(group);
+	// move the new group right above the track
+	for (int j = m_trackViews.indexOf(groupView), to = m_trackViews.indexOf(tv); j > to; --j)
+	{
+		moveTrackView(groupView, j - 1);
+	}
+	if (tv->getTrack()->color().has_value()) { group->setColor(tv->getTrack()->color()); }
+	assignTrackToGroup(tv->getTrack(), group->uid());
+}
+
+
+
+
+void TrackContainerView::assignTrackToGroup(Track* track, const QString& groupId)
+{
+	track->addJournalCheckPoint();
+	track->setGroupId(groupId);
+	regroupTrackViews();
+	realignTracks();
+	if (Engine::getSong()) { Engine::getSong()->setModified(); }
 }
 
 
@@ -485,6 +556,7 @@ unsigned int TrackContainerView::totalHeightOfTracks() const
 	unsigned int heightSum = 0;
 	for (auto & trackView : m_trackViews)
 	{
+		if (trackView->isHidden()) { continue; }
 		heightSum += trackView->getTrack()->getHeight();
 	}
 	return heightSum;

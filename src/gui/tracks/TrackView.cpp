@@ -93,6 +93,11 @@ TrackView::TrackView(Track* track, TrackContainerView* tcv)
 
 	connect( &m_track->m_soloModel, SIGNAL(dataChanged()),
 			m_track, SLOT(toggleSolo()), Qt::DirectConnection );
+
+	connect(m_track, &Track::groupChanged, this, [this] {
+		m_trackContainerView->realignTracks();
+		groupStateChanged();
+	});
 	
 	auto trackGrip = m_trackOperationsWidget.getTrackGrip();
 	connect(trackGrip, &TrackGrip::grabbed, this, &TrackView::onTrackGripGrabbed);
@@ -356,7 +361,18 @@ void TrackView::createClipView( Clip * clip )
 void TrackView::muteChanged()
 {
 	FadeButton * indicator = getActivityIndicator();
-	if (indicator) { setIndicatorMute(indicator, m_track->m_mutedModel.value()); }
+	if (indicator) { setIndicatorMute(indicator, m_track->isMuted()); }
+}
+
+
+
+
+void TrackView::groupStateChanged()
+{
+	muteChanged();
+	m_trackContentWidget.update();
+	m_trackOperationsWidget.update();
+	for (auto w : m_trackOperationsWidget.findChildren<QWidget*>()) { w->update(); }
 }
 
 
@@ -368,6 +384,8 @@ void TrackView::onTrackGripGrabbed()
 void TrackView::onTrackGripReleased()
 {
 	m_action = Action::None;
+	// Custom: keep group members directly below their group
+	m_trackContainerView->regroupTrackViews();
 }
 
 

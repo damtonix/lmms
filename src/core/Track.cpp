@@ -38,6 +38,7 @@
 #include "AutomationTrack.h"
 #include "ConfigManager.h"
 #include "Engine.h"
+#include "GroupTrack.h"
 #include "InstrumentTrack.h"
 #include "PatternStore.h"
 #include "PatternTrack.h"
@@ -97,6 +98,7 @@ Track * Track::create( Type tt, TrackContainer * tc )
 		case Type::Automation: t = new class AutomationTrack( tc ); break;
 		case Type::HiddenAutomation:
 						t = new class AutomationTrack( tc, true ); break;
+		case Type::Group: t = new class GroupTrack( tc ); break;
 		default: break;
 	}
 
@@ -170,6 +172,11 @@ void Track::saveTrack(QDomDocument& doc, QDomElement& element, bool presetMode)
 	{
 		element.setAttribute("color", m_color->name());
 	}
+
+	if (!presetMode && !m_groupId.isEmpty() && group() != nullptr)
+	{
+		element.setAttribute("group", m_groupId);
+	}
 	
 	QDomElement tsDe = doc.createElement( nodeName() );
 	// let actual track (InstrumentTrack, PatternTrack, SampleTrack etc.) save its settings
@@ -209,6 +216,11 @@ void Track::loadTrack(const QDomElement& element, bool presetMode)
 	if (element.hasAttribute("color"))
 	{
 		setColor(QColor{element.attribute("color")});
+	}
+
+	if (!presetMode)
+	{
+		setGroupId(element.attribute("group"));
 	}
 
 	if (presetMode)
@@ -478,6 +490,17 @@ void Track::toggleSolo()
 	}
 
 	const bool solo = m_soloModel.value();
+
+	// Custom: tracks that stay audible when this track is soloed.
+	// Soloing a group keeps its members, soloing a member keeps its group (which has no audio itself).
+	auto keepAudible = [this](const Track* track) {
+		if (track == this) { return true; }
+		if (type() == Type::Group && track->groupId() == static_cast<const GroupTrack*>(this)->uid()) { return true; }
+		if (track->type() == Type::Group && !m_groupId.isEmpty()
+			&& static_cast<const GroupTrack*>(track)->uid() == m_groupId) { return true; }
+		return false;
+	};
+
 	// Should we use the new behavior of solo or the older/legacy one?
 	const bool soloLegacyBehavior = ConfigManager::inst()->value("app", "sololegacybehavior", "0").toInt();
 
@@ -488,10 +511,10 @@ void Track::toggleSolo()
 			// save mute-state in case no track was solo before
 			if (!soloBefore)
 			{
-				track->m_mutedBeforeSolo = track->isMuted();
+				track->m_mutedBeforeSolo = track->isMutedSelf();
 			}
 			// Don't mute AutomationTracks (keep their original state) unless we are on the sololegacybehavior mode
-			if (track == this)
+			if (keepAudible(track))
 			{
 				track->setMuted(false);
 			}
@@ -515,6 +538,44 @@ void Track::toggleSolo()
 		}
 	}
 }
+
+bool Track::isMuted() const
+{
+	if (m_mutedModel.value()) { return true; }
+	if (m_groupId.isEmpty()) { return false; }
+	const auto g = group();
+	return g != nullptr && g->isMutedSelf();
+}
+
+
+
+
+void Track::setGroupId(const QString& id)
+{
+	if (m_groupId == id) { return; }
+	m_groupId = id;
+	emit groupChanged();
+}
+
+
+
+
+GroupTrack* Track::group() const
+{
+	if (m_groupId.isEmpty() || m_type == Type::Group) { return nullptr; }
+	for (const auto& track : m_trackContainer->tracks())
+	{
+		if (track->type() == Type::Group)
+		{
+			auto g = static_cast<GroupTrack*>(track);
+			if (g->uid() == m_groupId) { return g; }
+		}
+	}
+	return nullptr;
+}
+
+
+
 
 void Track::setColor(const std::optional<QColor>& color)
 {

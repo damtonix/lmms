@@ -120,6 +120,9 @@ public slots:
 	//! @brief Close this track View.
 	virtual bool close();
 
+	//! Custom: refresh visuals after the state of this track's group changed (mute, color, membership)
+	void groupStateChanged();
+
 
 protected:
 	//! @brief Register that the model of this track View has changed.

@@ -355,6 +355,7 @@ private slots:
 	void removeBar();
 	void addSampleTrack();
 	void addAutomationTrack();
+	void addGroupTrack(); //!< Custom
 
 	void setTempo();
 	void setTimeSignature();

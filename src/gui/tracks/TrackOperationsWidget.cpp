@@ -37,6 +37,8 @@
 #include "AutomationTrackView.h"
 #include "ColorChooser.h"
 #include "ConfigManager.h"
+#include "GroupTrack.h"
+#include "Song.h"
 #include "embed.h"
 #include "Engine.h"
 #include "InstrumentTrackView.h"
@@ -271,6 +273,8 @@ void TrackOperationsWidget::updateMenu()
 		toMenu->addAction( tr( "Turn all recording off" ), this, SLOT(recordingOff()));
 	}
 
+	addGroupMenu(toMenu);
+
 	toMenu->addSeparator();
 
 	QMenu* colorMenu = toMenu->addMenu(tr("Track color"));
@@ -281,6 +285,55 @@ void TrackOperationsWidget::updateMenu()
 	colorMenu->addSeparator();
 	colorMenu->addAction(tr("Reset clip colors"), this, SLOT(resetClipColors()));
 }
+
+
+void TrackOperationsWidget::addGroupMenu(QMenu* toMenu)
+{
+	// Custom: track groups, only in the song editor
+	auto tcv = m_trackView->trackContainerView();
+	auto track = m_trackView->getTrack();
+	if (tcv->model() != Engine::getSong()) { return; }
+
+	toMenu->addSeparator();
+
+	if (track->type() == Track::Type::Group)
+	{
+		auto group = static_cast<GroupTrack*>(track);
+		toMenu->addAction(embed::getIconPixmap(group->isCollapsed() ? "folder_opened" : "folder", 16, 16),
+			group->isCollapsed() ? tr("Gruppe ausklappen") : tr("Gruppe einklappen"),
+			this, [group] { group->setCollapsed(!group->isCollapsed()); });
+		toMenu->addAction(tr("Gruppe aufl\xc3\xb6sen (Spuren behalten)"), this, [this, group] {
+			for (auto member : group->members()) { member->setGroupId(QString()); }
+			emit trackRemovalScheduled(m_trackView);
+		});
+		return;
+	}
+
+	QMenu* groupMenu = toMenu->addMenu(embed::getIconPixmap("folder", 16, 16), tr("Gruppe"));
+	groupMenu->addAction(embed::getIconPixmap("add_folder", 16, 16), tr("Neue Gruppe mit dieser Spur"),
+		this, [tcv, this] { tcv->createGroupForTrack(m_trackView); });
+
+	bool hasGroups = false;
+	for (const auto& other : Engine::getSong()->tracks())
+	{
+		if (other->type() != Track::Type::Group) { continue; }
+		if (!hasGroups) { groupMenu->addSeparator(); hasGroups = true; }
+		auto group = static_cast<GroupTrack*>(other);
+		const QString uid = group->uid();
+		auto action = groupMenu->addAction(tr("Zu \"%1\" hinzuf\xc3\xbcgen").arg(group->name()),
+			this, [tcv, track, uid] { tcv->assignTrackToGroup(track, uid); });
+		action->setCheckable(true);
+		action->setChecked(track->groupId() == uid);
+	}
+
+	if (track->group() != nullptr)
+	{
+		groupMenu->addSeparator();
+		groupMenu->addAction(tr("Aus Gruppe entfernen"), this, [tcv, track] { tcv->assignTrackToGroup(track, QString()); });
+	}
+}
+
+
 
 
 void TrackOperationsWidget::toggleRecording( bool on )

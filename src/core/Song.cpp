@@ -836,6 +836,14 @@ void Song::addAutomationTrack()
 
 
 
+void Song::addGroupTrack()
+{
+	( void )Track::create( Track::Type::Group, this );
+}
+
+
+
+
 bpm_t Song::getTempo()
 {
 	return ( bpm_t )m_tempoModel.value();

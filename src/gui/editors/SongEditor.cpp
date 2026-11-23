@@ -950,9 +950,14 @@ SongEditorWindow::SongEditorWindow(Song* song) :
 	connect(m_addSampleTrackAction, SIGNAL(triggered()), m_editor->m_song, SLOT(addSampleTrack()));
 	connect(m_addAutomationTrackAction, SIGNAL(triggered()), m_editor->m_song, SLOT(addAutomationTrack()));
 
+	// Custom: group tracks
+	auto addGroupTrackAction = new QAction(embed::getIconPixmap("add_folder"), tr("Gruppe hinzuf\xc3\xbcgen"), this);
+	connect(addGroupTrackAction, SIGNAL(triggered()), m_editor->m_song, SLOT(addGroupTrack()));
+
 	trackActionsToolBar->addAction( m_addPatternTrackAction );
 	trackActionsToolBar->addAction( m_addSampleTrackAction );
 	trackActionsToolBar->addAction( m_addAutomationTrackAction );
+	trackActionsToolBar->addAction( addGroupTrackAction );
 
 
 	// Edit actions

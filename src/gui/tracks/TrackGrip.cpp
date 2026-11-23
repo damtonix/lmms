@@ -27,6 +27,7 @@
 #include "DataFile.h"
 #include "embed.h"
 #include "KeyboardShortcuts.h"
+#include "GroupTrack.h"
 #include "StringPairDrag.h"
 #include "Track.h"
 #include "TrackView.h"
@@ -122,6 +123,13 @@ void TrackGrip::paintEvent(QPaintEvent*)
 	// Paint the pixmap
 	auto r = rect().marginsRemoved(QMargins(c_margin, c_margin, c_margin, c_margin));
 	p.drawTiledPixmap(r, m_isGrabbed ? *s_grabbedPixmap : *s_releasedPixmap);
+
+	// Custom: members of a group get a strip in the group's color
+	if (const auto group = m_trackView->getTrack()->group())
+	{
+		const auto groupColor = group->color().value_or(palette().color(QPalette::Highlight));
+		p.fillRect(QRect(0, 0, 4, height()), group->isMutedSelf() ? groupColor.darker(200) : groupColor);
+	}
 }
 
 } // namespace lmms::gui

@@ -1007,7 +1007,7 @@ void InstrumentTrack::replaceInstrument(DataFile dataFile)
 	InstrumentTrack::removeMidiPortNode(dataFile);
 	
 	//Replacing an instrument shouldn't change the solo/mute state.
-	bool oldMute = isMuted();
+	bool oldMute = isMutedSelf();
 	bool oldSolo = isSolo();
 	bool oldMutedBeforeSolo = isMutedBeforeSolo();
 

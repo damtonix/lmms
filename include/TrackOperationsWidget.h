@@ -28,6 +28,7 @@
 #include <QWidget>
 
 class QPushButton;
+class QMenu;
 
 namespace lmms::gui
 {
@@ -82,6 +83,8 @@ private slots:
 	void clearTrack(); //!< Clears all Clips from the track
 
 private:
+	void addGroupMenu(QMenu* toMenu); //!< Custom: track group entries
+
 	TrackView * m_trackView;
 
 	TrackGrip* m_trackGrip;

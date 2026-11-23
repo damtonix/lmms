@@ -142,6 +142,13 @@ public:
 
 	void clearAllTracks();
 
+	//! Custom: reorder track views so every group is directly followed by its members
+	void regroupTrackViews();
+	//! Custom: create a new group directly above @p tv and put @p tv into it
+	void createGroupForTrack(TrackView* tv);
+	//! Custom: put @p track into the group with id @p groupId (empty = remove from group)
+	void assignTrackToGroup(Track* track, const QString& groupId);
+
 	QString nodeName() const override
 	{
 		return "trackcontainerview";
