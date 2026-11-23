@@ -365,6 +365,17 @@ int main( int argc, char * * argv )
 	QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
 #endif
 
+#if defined(LMMS_BUILD_WIN32) && (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
+	// Custom: Qt 6 makes the process "Per-Monitor DPI aware V2". VST editors live in a separate,
+	// DPI-unaware process (RemoteVstPlugin) and Windows then maps their window position with the
+	// scale factor, which shifts the plugin GUI up/left and cuts it off (LMMS issue #7683).
+	// Use Per-Monitor V1 like the Qt 5 builds, where VST windows are placed correctly.
+	if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
+	{
+		qputenv("QT_QPA_PLATFORM", "windows:dpiawareness=2");
+	}
+#endif
+
 	QCoreApplication * app = coreOnly ?
 			new QCoreApplication( argc, argv ) :
 					new gui::MainApplication(argc, argv);
