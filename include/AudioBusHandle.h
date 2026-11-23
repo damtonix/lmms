@@ -37,6 +37,7 @@ namespace lmms
 {
 
 class EffectChain;
+class Track;
 class FloatModel;
 class BoolModel;
 
@@ -54,6 +55,8 @@ class BoolModel;
 class AudioBusHandle : public ThreadableJob
 {
 public:
+	//! Custom: use the track's effective mute state (includes group mute)
+	void setTrack(const Track* track) { m_track = track; }
 	AudioBusHandle(const QString& name, bool hasEffectChain = true,
 		FloatModel* volumeModel = nullptr, FloatModel* panningModel = nullptr,
 		BoolModel* mutedModel = nullptr);
@@ -102,6 +105,7 @@ private:
 	FloatModel* m_volumeModel;
 	FloatModel* m_panningModel;
 	BoolModel* m_mutedModel;
+	const Track* m_track = nullptr; //!< Custom: owning track, for group mute
 	
 	std::atomic<bool> m_corrupted = false;
 

@@ -53,6 +53,7 @@ SampleTrack::SampleTrack(TrackContainer* tc) :
 	m_isPlaying(false)
 {
 	setName(tr("Sample track"));
+	m_audioBusHandle.setTrack(this); // Custom: group mute
 	m_panningModel.setCenterValue(DefaultPanning);
 	m_mixerChannelModel.setRange(0, Engine::mixer()->numChannels()-1, 1);
 

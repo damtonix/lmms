@@ -24,6 +24,7 @@
  */
 
 #include "AudioBusHandle.h"
+#include "Track.h"
 
 #include <QMutexLocker>
 
@@ -111,7 +112,7 @@ bool AudioBusHandle::processEffects()
 
 void AudioBusHandle::doProcessing()
 {
-	if (m_mutedModel && m_mutedModel->value())
+	if ((m_mutedModel && m_mutedModel->value()) || (m_track && m_track->isMuted()))
 	{
 		return;
 	}
