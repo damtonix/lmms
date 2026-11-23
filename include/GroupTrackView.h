@@ -12,7 +12,12 @@
 #ifndef LMMS_GUI_GROUP_TRACK_VIEW_H
 #define LMMS_GUI_GROUP_TRACK_VIEW_H
 
+#include <utility>
+#include <vector>
+
 #include "TrackView.h"
+
+class QTimer;
 
 class QToolButton;
 
@@ -40,10 +45,15 @@ private slots:
 	void updateCollapsedState();
 	void updateColor();
 	void notifyMembers();
+	void chooseColor();
+	void refreshLaneIfChanged();
 
 private:
 	QToolButton* m_collapseButton;
+	QToolButton* m_colorButton;
 	TrackLabelButton* m_label;
+	QTimer* m_laneTimer;
+	std::vector<std::pair<int, int>> m_lastRanges;
 };
 
 } // namespace gui

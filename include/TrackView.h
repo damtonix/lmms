@@ -122,6 +122,8 @@ public slots:
 
 	//! Custom: refresh visuals after the state of this track's group changed (mute, color, membership)
 	void groupStateChanged();
+	//! Custom: indent the settings area of group members and show the group color there
+	void applyGroupIndent();
 
 
 protected:
@@ -216,6 +218,9 @@ private:
 	TrackContentWidget m_trackContentWidget;
 
 	Action m_action = Action::None;
+
+	int m_groupIndent = 0;              //!< Custom: currently applied indent
+	QWidget* m_groupIndentBar = nullptr; //!< Custom: colored bar in the indent area
 
 	virtual FadeButton * getActivityIndicator()
 	{

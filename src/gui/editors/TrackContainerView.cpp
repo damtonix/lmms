@@ -262,6 +262,7 @@ void TrackContainerView::realignTracks()
 		// Custom: hide members of collapsed groups
 		const auto group = trackView->getTrack()->group();
 		trackView->setVisible(group == nullptr || !group->isCollapsed());
+		trackView->applyGroupIndent();
 		trackView->update();
 	}
 

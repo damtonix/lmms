@@ -12,8 +12,10 @@
 #include "GroupTrack.h"
 
 #include <QDomElement>
+#include <algorithm>
 #include <QUuid>
 
+#include "Clip.h"
 #include "GroupTrackView.h"
 #include "TrackContainer.h"
 
@@ -115,6 +117,38 @@ std::vector<Track*> GroupTrack::members() const
 void GroupTrack::regenerateUid()
 {
 	m_uid = QUuid::createUuid().toString(QUuid::WithoutBraces);
+}
+
+
+
+
+std::vector<std::pair<tick_t, tick_t>> GroupTrack::memberClipRanges() const
+{
+	std::vector<std::pair<tick_t, tick_t>> ranges;
+	for (const auto& member : members())
+	{
+		for (const auto& clip : member->getClips())
+		{
+			const tick_t start = clip->startPosition();
+			const tick_t end = clip->endPosition();
+			if (end > start) { ranges.emplace_back(start, end); }
+		}
+	}
+	std::sort(ranges.begin(), ranges.end());
+
+	std::vector<std::pair<tick_t, tick_t>> merged;
+	for (const auto& range : ranges)
+	{
+		if (!merged.empty() && range.first <= merged.back().second)
+		{
+			merged.back().second = std::max(merged.back().second, range.second);
+		}
+		else
+		{
+			merged.push_back(range);
+		}
+	}
+	return merged;
 }
 
 } // namespace lmms

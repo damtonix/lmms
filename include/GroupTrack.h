@@ -58,6 +58,9 @@ public:
 	//! Generate a fresh, unique id (used when a group is cloned)
 	void regenerateUid();
 
+	//! Merged [start, end) tick ranges covered by the clips of all members
+	std::vector<std::pair<tick_t, tick_t>> memberClipRanges() const;
+
 signals:
 	void collapsedChanged();
 

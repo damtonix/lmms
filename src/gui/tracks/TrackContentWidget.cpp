@@ -24,6 +24,8 @@
 
 #include "TrackContentWidget.h"
 
+#include "GroupTrack.h"
+
 #include <QApplication>
 #include <QContextMenuEvent>
 #include <QMenu>
@@ -549,6 +551,35 @@ void TrackContentWidget::paintEvent( QPaintEvent * pe )
 	{
 		p.drawTiledPixmap(rect(), m_background, QPoint(
 				tcv->currentPosition().getTicks() * ppb / TimePos::ticksPerBar(), 0));
+	}
+
+	// Custom: group lane – a band in the group color plus a block wherever a member has clips
+	if (getTrack()->type() == Track::Type::Group)
+	{
+		auto group = static_cast<GroupTrack*>(getTrack());
+		QColor color = group->color().value_or(palette().color(QPalette::Highlight));
+		if (group->isMutedSelf()) { color = color.darker(220); }
+
+		QColor band = color;
+		band.setAlpha(45);
+		p.fillRect(QRect(0, 2, width(), height() - 5), band);
+
+		const tick_t viewStart = tcv->currentPosition().getTicks();
+		auto xOf = [&](tick_t t) {
+			return static_cast<int>((t - viewStart) * static_cast<double>(ppb) / TimePos::ticksPerBar());
+		};
+		QColor block = color;
+		block.setAlpha(190);
+		p.setRenderHint(QPainter::Antialiasing);
+		p.setPen(QPen(color.lighter(150), 1));
+		p.setBrush(block);
+		for (const auto& [start, end] : group->memberClipRanges())
+		{
+			const int x1 = xOf(start);
+			const int x2 = xOf(end);
+			if (x2 < 0 || x1 > width()) { continue; }
+			p.drawRoundedRect(QRectF(x1 + 0.5, 4.5, std::max(2, x2 - x1 - 1), height() - 10), 3, 3);
+		}
 	}
 }
 

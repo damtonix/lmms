@@ -39,9 +39,11 @@
 #include "DeprecationHelper.h"
 #include "Engine.h"
 #include "FadeButton.h"
+#include "GroupTrack.h"
 #include "StringPairDrag.h"
 #include "Track.h"
 #include "TrackGrip.h"
+#include "TrackLabelButton.h"
 #include "TrackContainerView.h"
 #include "ClipView.h"
 
@@ -130,6 +132,7 @@ void TrackView::resizeEvent( QResizeEvent * re )
 	}
 
 	m_trackContentWidget.setFixedHeight( height() );
+	if (m_groupIndentBar) { m_groupIndentBar->setFixedHeight(m_trackSettingsWidget.height()); }
 }
 
 
@@ -367,8 +370,65 @@ void TrackView::muteChanged()
 
 
 
+void TrackView::applyGroupIndent()
+{
+	constexpr int GroupIndent = 18;
+	const auto group = m_track->group();
+	const int indent = group != nullptr ? GroupIndent : 0;
+	auto settings = &m_trackSettingsWidget;
+
+	if (indent != m_groupIndent)
+	{
+		const int delta = indent - m_groupIndent;
+		if (auto layout = settings->layout())
+		{
+			auto margins = layout->contentsMargins();
+			margins.setLeft(margins.left() + delta);
+			layout->setContentsMargins(margins);
+		}
+		else
+		{
+			for (auto child : settings->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly))
+			{
+				if (child != m_groupIndentBar) { child->move(child->x() + delta, child->y()); }
+			}
+		}
+		// keep everything inside the fixed settings width: shrink the name button
+		if (auto label = settings->findChild<TrackLabelButton*>(QString(), Qt::FindDirectChildrenOnly))
+		{
+			if (label->width() > 2 * GroupIndent) { label->setFixedWidth(label->width() - delta); }
+		}
+		m_groupIndent = indent;
+	}
+
+	if (group != nullptr)
+	{
+		if (m_groupIndentBar == nullptr)
+		{
+			m_groupIndentBar = new QWidget(settings);
+			m_groupIndentBar->setAutoFillBackground(true);
+		}
+		QColor color = group->color().value_or(palette().color(QPalette::Highlight));
+		if (group->isMutedSelf()) { color = color.darker(200); }
+		QPalette pal = m_groupIndentBar->palette();
+		pal.setColor(QPalette::Window, color);
+		m_groupIndentBar->setPalette(pal);
+		m_groupIndentBar->setGeometry(GroupIndent - 8, 0, 4, settings->height());
+		m_groupIndentBar->show();
+		m_groupIndentBar->raise();
+	}
+	else if (m_groupIndentBar != nullptr)
+	{
+		m_groupIndentBar->hide();
+	}
+}
+
+
+
+
 void TrackView::groupStateChanged()
 {
+	applyGroupIndent();
 	muteChanged();
 	m_trackContentWidget.update();
 	m_trackOperationsWidget.update();
