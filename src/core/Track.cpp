@@ -61,6 +61,34 @@ Track::Track(Type type, TrackContainer* tc)
 {	
 	m_trackContainer->addTrack( this );
 	m_height = -1;
+
+	// Custom: children (group members, automation tracks of instruments) follow the mute button
+	connect(&m_mutedModel, &BoolModel::dataChanged, this, &Track::propagateMuteToChildren, Qt::DirectConnection);
+}
+
+
+
+
+bool Track::s_inSoloChange = false;
+
+void Track::propagateMuteToChildren()
+{
+	if (s_inSoloChange) { return; }
+	if (Engine::getSong() && Engine::getSong()->isLoadingProject()) { return; }
+	const bool muted = m_mutedModel.value();
+	for (auto child : childTracks())
+	{
+		if (child == this) { continue; }
+		if (muted)
+		{
+			child->m_mutedBeforeParent = child->m_mutedModel.value();
+			child->setMuted(true);
+		}
+		else
+		{
+			child->setMuted(child->m_mutedBeforeParent);
+		}
+	}
 }
 
 
@@ -180,6 +208,7 @@ void Track::saveTrack(QDomDocument& doc, QDomElement& element, bool presetMode)
 		if (!m_uid.isEmpty()) { element.setAttribute("uid", m_uid); }
 		if (m_collapsed) { element.setAttribute("collapsed", 1); }
 		if (m_frozen) { element.setAttribute("frozen", 1); }
+		if (m_mutedBeforeParent) { element.setAttribute("mutedbeforeparent", 1); }
 		if (!m_freezeProxyOf.isEmpty()) { element.setAttribute("freezeproxyof", m_freezeProxyOf); }
 	}
 	
@@ -237,6 +266,7 @@ void Track::loadTrack(const QDomElement& element, bool presetMode)
 		setGroupId(element.attribute("group"));
 		setCollapsed(element.attribute("collapsed", "0").toInt() != 0);
 		setFrozen(element.attribute("frozen", "0").toInt() != 0);
+		m_mutedBeforeParent = element.attribute("mutedbeforeparent", "0").toInt() != 0;
 		m_freezeProxyOf = element.attribute("freezeproxyof");
 	}
 
@@ -491,6 +521,11 @@ bar_t Track::length() const
 
 void Track::toggleSolo()
 {
+	// Custom: solo sets many mute states at once; children must not be re-muted by their parents meanwhile
+	// (toggleSolo is re-entered for the other tracks, so restore the previous state instead of clearing)
+	struct RestoreFlag { bool previous; ~RestoreFlag() { Track::s_inSoloChange = previous; } } restoreFlag{s_inSoloChange};
+	s_inSoloChange = true;
+
 	const TrackContainer::TrackList & tl = m_trackContainer->tracks();
 
 	bool soloBefore = false;
@@ -571,9 +606,7 @@ bool Track::isMuted() const
 		return owner == nullptr || !owner->isFrozen() || owner->isMuted();
 	}
 	if (m_groupId.isEmpty()) { return false; }
-	// Custom: muting a parent (group or instrument with automation tracks) mutes its children
-	const auto parent = parentTrack();
-	return parent != nullptr && parent != this && parent->isMuted();
+	return false; // Custom: children of muted parents get their own mute button set (see propagateMuteToChildren)
 }
 
 

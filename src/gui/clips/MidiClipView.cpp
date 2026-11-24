@@ -802,7 +802,6 @@ void MidiClipView::paintEvent( QPaintEvent * )
 		for (Note const * currentNote : noteCollection)
 		{
 			if (loopLen > 0 && currentNote->pos() >= loopLen) { continue; }
-			p.setOpacity(repetition == 0 ? 1.0 : 0.55);
 
 			// Map to 0, 1, 2, ...
 			int mappedNoteKey = currentNote->key() - minKey;
@@ -838,18 +837,11 @@ void MidiClipView::paintEvent( QPaintEvent * )
 		const int loopStartX = x_base + static_cast<int>((loopLen + offset) * pxPerTick);
 		if (loopStartX < width())
 		{
-			// darker, hatched background for the repeated part
-			p.fillRect(QRect(loopStartX, 0, width() - loopStartX, height()), QColor(0, 0, 0, c.lightness() > 128 ? 45 : 70));
-			p.fillRect(QRect(loopStartX, 0, width() - loopStartX, height()),
-				QBrush(c.lightness() > 128 ? QColor(0, 0, 0, 55) : QColor(255, 255, 255, 28), Qt::BDiagPattern));
-
-			// a bright separator with a loop symbol at every repetition start
+			// only a loop symbol at every repetition start
 			const QPixmap loopIcon = embed::getIconPixmap("loop_points_on", 12, 12);
 			for (tick_t t = loopLen; t < m_clip->length() - offset; t += loopLen)
 			{
 				const int x = x_base + static_cast<int>((t + offset) * pxPerTick);
-				p.setPen(QPen(c.lightness() > 128 ? c.darker(260) : c.lighter(170), 2));
-				p.drawLine(x, 0, x, height());
 				p.drawPixmap(x + 2, height() - loopIcon.height() - 3, loopIcon);
 			}
 		}

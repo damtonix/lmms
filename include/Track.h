@@ -323,6 +323,9 @@ public slots:
 	//! mute state of all tracks, and set our mute state to on and all the others to off.
 	void toggleSolo();
 
+	//! Custom: muting a track mutes its children (and restores them when unmuted)
+	void propagateMuteToChildren();
+
 private:
 	//! @brief Save this track's settings to file
 	//!
@@ -372,6 +375,8 @@ private:
 	bool m_collapsed = false;
 	bool m_frozen = false;
 	QString m_freezeProxyOf;
+	bool m_mutedBeforeParent = false; //!< Custom: own mute state before the parent was muted
+	static bool s_inSoloChange;       //!< Custom: no mute propagation while solo rearranges mutes
 
 	friend class gui::TrackView;
 
