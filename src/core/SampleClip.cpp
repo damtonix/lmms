@@ -81,6 +81,7 @@ SampleClip::SampleClip(const SampleClip& orig) :
 	m_isPlaying(orig.m_isPlaying),
 	m_startFrameOffset(orig.m_startFrameOffset)
 {
+	m_missingSampleFile = orig.m_missingSampleFile;
 	saveJournallingState( false );
 	setSampleFile( "" );
 	restoreJournallingState();
@@ -179,6 +180,7 @@ void SampleClip::setSampleFile(const QString& sf)
 		// Remove any prior offset in the clip
 		setStartTimeOffset(0);
 
+		m_missingSampleFile.clear();
 		m_sample = Sample{std::move(buffer)};
 		m_sampleThumbnailCache = std::move(thumbnailCache);
 		updateLength();
@@ -306,10 +308,12 @@ void SampleClip::saveSettings( QDomDocument & _doc, QDomElement & _this )
 	}
 	_this.setAttribute( "len", length() );
 	_this.setAttribute( "muted", isMuted() );
-	_this.setAttribute( "src", sampleFile() );
+	// Custom: keep the path of a missing sample so it can be relinked later
+	const bool keepMissing = sampleFile().isEmpty() && !m_missingSampleFile.isEmpty();
+	_this.setAttribute( "src", keepMissing ? m_missingSampleFile : sampleFile() );
 	_this.setAttribute( "off", startTimeOffset() );
 	_this.setAttribute("autoresize", QString::number(getAutoResize()));
-	if( sampleFile() == "" )
+	if( sampleFile() == "" && !keepMissing )
 	{
 		QString s;
 		_this.setAttribute("data", m_sample.toBase64());
@@ -343,7 +347,11 @@ void SampleClip::loadSettings( const QDomElement & _this )
 		{
 			setSampleFile(srcFile);
 		}
-		else { Engine::getSong()->collectError(QString("%1: %2").arg(tr("Sample not found"), srcFile)); }
+		else
+		{
+			m_missingSampleFile = srcFile;
+			Engine::getSong()->collectError(QString("%1: %2").arg(tr("Sample not found"), srcFile));
+		}
 	}
 
 	if( sampleFile().isEmpty() && _this.hasAttribute( "data" ) )

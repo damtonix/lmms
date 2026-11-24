@@ -102,6 +102,7 @@ protected:
 
 private:
 	Sample m_sample;
+	QString m_missingSampleFile; //!< Custom: path of a sample that could not be found (kept on save)
 	std::shared_ptr<const SampleThumbnailCache> m_sampleThumbnailCache;
 	BoolModel m_recordModel;
 	bool m_isPlaying;

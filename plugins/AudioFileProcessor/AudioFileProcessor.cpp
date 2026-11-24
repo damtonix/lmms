@@ -196,8 +196,10 @@ void AudioFileProcessor::deleteNotePluginData( NotePlayHandle * _n )
 
 void AudioFileProcessor::saveSettings(QDomDocument& doc, QDomElement& elem)
 {
-	elem.setAttribute("src", m_sample.sampleFile());
-	if (m_sample.sampleFile().isEmpty())
+	// Custom: keep the path of a missing sample so it can be relinked later
+	const bool keepMissing = m_sample.sampleFile().isEmpty() && !m_missingSampleFile.isEmpty();
+	elem.setAttribute("src", keepMissing ? m_missingSampleFile : m_sample.sampleFile());
+	if (m_sample.sampleFile().isEmpty() && !keepMissing)
 	{
 		elem.setAttribute("sampledata", m_sample.toBase64());
 	}
@@ -222,7 +224,11 @@ void AudioFileProcessor::loadSettings(const QDomElement& elem)
 		{
 			setAudioFile(srcFile, false);
 		}
-		else { Engine::getSong()->collectError(QString("%1: %2").arg(tr("Sample not found"), srcFile)); }
+		else
+		{
+			m_missingSampleFile = srcFile;
+			Engine::getSong()->collectError(QString("%1: %2").arg(tr("Sample not found"), srcFile));
+		}
 	}
 	else if (auto sampleData = elem.attribute("sampledata"); !sampleData.isEmpty())
 	{
@@ -319,6 +325,7 @@ void AudioFileProcessor::setAudioFile(const QString& _audio_file, bool _rename)
 	// TODO: Return an error value back to the caller (via std::expected or our own polyfill)
 	auto thumbnailCache = SampleCache::instance().fetchThumbnailCache(path);
 	if (!thumbnailCache) { return; }
+	m_missingSampleFile.clear();
 
 	// is current channel-name equal to previous-filename??
 	if( _rename &&
