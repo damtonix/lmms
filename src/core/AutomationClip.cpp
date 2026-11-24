@@ -204,6 +204,28 @@ void AutomationClip::setLoopLength(tick_t length)
 
 
 
+void AutomationClip::shiftContent(int delta)
+{
+	{
+		QMutexLocker m(&m_clipMutex);
+		timeMap shifted;
+		for (auto it = m_timeMap.begin(); it != m_timeMap.end(); ++it)
+		{
+			const int pos = std::max(0, it.key() + delta);
+			AutomationNode node(this, it.value().getInValue(), it.value().getOutValue(), pos);
+			node.setInTangent(it.value().getInTangent());
+			node.setOutTangent(it.value().getOutTangent());
+			node.setLockedTangents(it.value().lockedTangents());
+			shifted.insert(pos, node);
+		}
+		m_timeMap = shifted;
+	}
+	emit dataChanged();
+}
+
+
+
+
 TimePos AutomationClip::editRangeEnd() const
 {
 	return isLooped() ? TimePos(m_loopLength) : TimePos(length() - startTimeOffset());

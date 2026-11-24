@@ -890,6 +890,22 @@ void ClipView::mouseReleaseEvent( QMouseEvent * me )
 	}
 	else if( m_action == Action::Move || m_action == Action::Resize || m_action == Action::ResizeLeft )
 	{
+		// Custom: a MIDI/automation clip extended to the left gets real empty space at its start,
+		// so the piano roll / automation editor show the gap before the content
+		const int offset = m_clip->startTimeOffset();
+		if (m_action == Action::ResizeLeft && offset > 0)
+		{
+			if (auto midiClip = dynamic_cast<MidiClip*>(m_clip); midiClip && !midiClip->isLooped())
+			{
+				midiClip->shiftContent(offset);
+				midiClip->setStartTimeOffset(0);
+			}
+			else if (auto autoClip = dynamic_cast<AutomationClip*>(m_clip); autoClip && !autoClip->isLooped())
+			{
+				autoClip->shiftContent(offset);
+				autoClip->setStartTimeOffset(0);
+			}
+		}
 		// TODO: Fix m_clip->setJournalling() consistency
 		m_clip->setJournalling( true );
 	}

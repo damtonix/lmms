@@ -64,6 +64,8 @@ public:
 	tick_t loopLength() const { return m_loopLength; }
 	void setLoopLength(tick_t length);
 	bool isLooped() const { return m_loopLength > 0; }
+	//! Move all notes by @p delta ticks
+	void shiftContent(int delta);
 	//! End of the editable note range (note time): the loop length if looped, else the clip end
 	TimePos noteRangeEnd() const;
 	// ------------------------------------------------

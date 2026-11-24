@@ -136,6 +136,15 @@ void MidiClip::setLoopLength(tick_t length)
 
 
 
+void MidiClip::shiftContent(int delta)
+{
+	for (auto& note : m_notes) { note->setPos(std::max(0, note->pos() + delta)); }
+	emit dataChanged();
+}
+
+
+
+
 TimePos MidiClip::noteRangeEnd() const
 {
 	return isLooped() ? TimePos(m_loopLength) : TimePos(length() - startTimeOffset());

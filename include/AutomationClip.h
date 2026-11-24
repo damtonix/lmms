@@ -56,6 +56,8 @@ public:
 	tick_t loopLength() const { return m_loopLength; }
 	void setLoopLength(tick_t length);
 	bool isLooped() const { return m_loopLength > 0; }
+	//! Move all automation points by @p delta ticks
+	void shiftContent(int delta);
 	//! End of the editable range: the loop length if looped, else the clip end
 	TimePos editRangeEnd() const;
 	//! Position inside the original part for a position relative to the clip content
