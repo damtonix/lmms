@@ -74,11 +74,11 @@ void AutomationTrackView::dropEvent( QDropEvent * _de )
 			track->addJournalCheckPoint();
 			const auto oldTarget = track->target();
 			const bool autoNamed = track->name() == AutomationTrack::tr("Automation track")
-				|| (oldTarget && track->name() == oldTarget->fullDisplayName());
+				|| (oldTarget && (track->name() == oldTarget->displayName() || track->name() == oldTarget->fullDisplayName()));
 			track->setTarget(mod);
 
-			// name the track after the control unless the user renamed it
-			if (autoNamed) { track->setName(mod->fullDisplayName()); }
+			// name the track after the control (only the control, without the instrument name)
+			if (autoNamed) { track->setName(mod->displayName()); }
 
 			// attach to the instrument track owning the control
 			if (auto owner = AutomationTrack::owningTrack(mod);

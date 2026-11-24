@@ -27,6 +27,7 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDesktopServices>
+#include <QDir>
 #include <QDomElement>
 #include <QFileInfo>
 #include <QMdiArea>
@@ -47,6 +48,7 @@
 #include "FileBrowser.h"
 #include "FileDialog.h"
 #include "Metronome.h"
+#include "Mixer.h"
 #include "MixerView.h"
 #include "GuiApplication.h"
 #include "ImportFilter.h"
@@ -1733,13 +1735,9 @@ QString MainWindow::askWavFile(const QString& title, const QString& baseName)
 	return path;
 }
 
-void MainWindow::bounceTrack(Track* track)
+bool MainWindow::renderTrackSolo(Track* track, const QString& path, const QString& title, bool neutralMaster)
 {
 	Song* song = Engine::getSong();
-	if (track == nullptr || track->trackContainer() != song) { return; }
-
-	const QString path = askWavFile(tr("Bounce: Datei w\xc3\xa4hlen..."), track->name() + "-bounce");
-	if (path.isEmpty()) { return; }
 
 	// Render only this track: mute every other audio track (automation keeps running),
 	// keep the parent group(s) audible and temporarily unfreeze the track
@@ -1762,11 +1760,93 @@ void MainWindow::bounceTrack(Track* track)
 	const bool wasFrozen = track->isFrozen();
 	track->setFrozen(false);
 
-	const bool ok = renderToWav(path, false, tr("Bounce"));
+	// For freezing, the result is played through the master channel again:
+	// render without master effects and master volume so they are not applied twice
+	auto master = Engine::mixer()->mixerChannel(0);
+	const bool masterFx = master->m_fxChain.enabledModel()->value();
+	const float masterVolume = master->m_volumeModel.value();
+	const int songVolume = song->masterVolume();
+	if (neutralMaster)
+	{
+		master->m_fxChain.enabledModel()->setValue(false);
+		master->m_volumeModel.setValue(1.0f);
+		song->setMasterVolume(100);
+	}
 
+	const bool ok = renderToWav(path, false, title);
+
+	if (neutralMaster)
+	{
+		master->m_fxChain.enabledModel()->setValue(masterFx);
+		master->m_volumeModel.setValue(masterVolume);
+		song->setMasterVolume(songVolume);
+	}
 	track->setFrozen(wasFrozen);
 	for (const auto& [other, muted] : savedMutes) { other->setMuted(muted); }
 	Engine::projectJournal()->setJournalling(journalling);
+	return ok;
+}
+
+void MainWindow::freezeTrack(Track* track)
+{
+	Song* song = Engine::getSong();
+	if (track == nullptr || track->trackContainer() != song || track->isFrozen()) { return; }
+
+	// render the track automatically into the working directory
+	const QString dir = ConfigManager::inst()->workingDir() + "frozen/";
+	QDir().mkpath(dir);
+	QString base = (song->projectFileName().isEmpty() ? tr("Projekt") : QFileInfo(song->projectFileName()).completeBaseName())
+		+ "-" + track->name();
+	base.replace(QRegularExpression(FILENAME_FILTER), "_");
+	const QString path = dir + base + "-" + track->uid().left(8) + ".wav";
+
+	if (!renderTrackSolo(track, path, tr("Einfrieren"), true)) { return; }
+
+	// hidden sample track that plays the frozen audio instead of the instrument
+	auto proxy = dynamic_cast<SampleTrack*>(Track::create(Track::Type::Sample, song));
+	if (proxy == nullptr) { return; }
+	proxy->setName(track->name() + tr(" (eingefroren)"));
+	proxy->setFreezeProxyOf(track->uid());
+	if (auto clip = dynamic_cast<SampleClip*>(proxy->createClip(TimePos(0)))) { clip->setSampleFile(path); }
+
+	track->setFrozen(true);
+	auto editor = getGUI()->songEditor()->m_editor;
+	editor->createTrackView(proxy);
+	editor->realignTracks();
+	song->setModified();
+}
+
+void MainWindow::unfreezeTrack(Track* track)
+{
+	if (track == nullptr || !track->isFrozen()) { return; }
+	auto editor = getGUI()->songEditor()->m_editor;
+	if (auto proxy = track->freezeProxy())
+	{
+		QString file;
+		if (!proxy->getClips().empty())
+		{
+			if (auto clip = dynamic_cast<SampleClip*>(proxy->getClips().front())) { file = clip->sampleFile(); }
+		}
+		for (auto tv : editor->trackViews())
+		{
+			if (tv->getTrack() == proxy) { editor->deleteTrackView(tv); break; }
+		}
+		if (!file.isEmpty() && file.contains("/frozen/")) { QFile::remove(file); }
+	}
+	track->setFrozen(false);
+	editor->realignTracks();
+	Engine::getSong()->setModified();
+}
+
+void MainWindow::bounceTrack(Track* track)
+{
+	Song* song = Engine::getSong();
+	if (track == nullptr || track->trackContainer() != song) { return; }
+
+	const QString path = askWavFile(tr("Bounce: Datei w\xc3\xa4hlen..."), track->name() + "-bounce");
+	if (path.isEmpty()) { return; }
+
+	const bool ok = renderTrackSolo(track, path, tr("Bounce"), false);
 	if (!ok) { return; }
 
 	// New sample track with the bounced file directly below the track (and its children)

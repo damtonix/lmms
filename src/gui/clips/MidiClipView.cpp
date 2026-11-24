@@ -558,6 +558,7 @@ void MidiClipView::paintEvent( QPaintEvent * )
 	if( !needsUpdate() )
 	{
 		painter.drawPixmap( 0, 0, m_paintPixmap );
+		paintGroupBorder(painter);
 		return;
 	}
 
@@ -839,16 +840,16 @@ void MidiClipView::paintEvent( QPaintEvent * )
 		if (loopStartX < width())
 		{
 			// darker, hatched background for the repeated part
-			p.fillRect(QRect(loopStartX, 0, width() - loopStartX, height()), QColor(0, 0, 0, 70));
+			p.fillRect(QRect(loopStartX, 0, width() - loopStartX, height()), QColor(0, 0, 0, c.lightness() > 128 ? 45 : 70));
 			p.fillRect(QRect(loopStartX, 0, width() - loopStartX, height()),
-				QBrush(QColor(255, 255, 255, 28), Qt::BDiagPattern));
+				QBrush(c.lightness() > 128 ? QColor(0, 0, 0, 55) : QColor(255, 255, 255, 28), Qt::BDiagPattern));
 
 			// a bright separator with a loop symbol at every repetition start
 			const QPixmap loopIcon = embed::getIconPixmap("loop_points_on", 12, 12);
 			for (tick_t t = loopLen; t < m_clip->length() - offset; t += loopLen)
 			{
 				const int x = x_base + static_cast<int>((t + offset) * pxPerTick);
-				p.setPen(QPen(c.lighter(170), 2));
+				p.setPen(QPen(c.lightness() > 128 ? c.darker(260) : c.lighter(170), 2));
 				p.drawLine(x, 0, x, height());
 				p.drawPixmap(x + 2, height() - loopIcon.height() - 3, loopIcon);
 			}
@@ -905,6 +906,7 @@ void MidiClipView::paintEvent( QPaintEvent * )
 	}
 
 	painter.drawPixmap( 0, 0, m_paintPixmap );
+	paintGroupBorder(painter);
 }
 
 

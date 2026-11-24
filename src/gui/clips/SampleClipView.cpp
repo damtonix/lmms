@@ -211,6 +211,7 @@ void SampleClipView::paintEvent( QPaintEvent * pe )
 	if( !needsUpdate() )
 	{
 		painter.drawPixmap(m_paintPixmapXPosition, 0, m_paintPixmap);
+		paintGroupBorder(painter);
 		return;
 	}
 
@@ -346,6 +347,7 @@ void SampleClipView::paintEvent( QPaintEvent * pe )
 	p.end();
 
 	painter.drawPixmap(m_paintPixmapXPosition, 0, m_paintPixmap);
+	paintGroupBorder(painter);
 }
 
 

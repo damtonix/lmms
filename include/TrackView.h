@@ -227,7 +227,7 @@ private:
 	int m_groupIndent = 0;              //!< Custom: currently applied indent
 	QWidget* m_groupIndentBar = nullptr; //!< Custom: colored bar in the indent area
 	QToolButton* m_foldButton = nullptr; //!< Custom: fold arrow for tracks with child tracks
-	QLabel* m_frozenOverlay = nullptr;   //!< Custom: shown over the content of frozen tracks
+	QWidget* m_frozenOverlay = nullptr;  //!< Custom: shown over the content of frozen/muted tracks
 
 	virtual FadeButton * getActivityIndicator()
 	{

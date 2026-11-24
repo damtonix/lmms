@@ -262,7 +262,7 @@ void TrackContainerView::realignTracks()
 	for (const auto& trackView : m_trackViews)
 	{
 		// Custom: hide children of collapsed tracks (groups, instruments with automation tracks)
-		trackView->setVisible(!trackView->getTrack()->isHiddenByCollapse());
+		trackView->setVisible(!trackView->getTrack()->isHiddenByCollapse() && !trackView->getTrack()->isFreezeProxy());
 		trackView->applyGroupIndent();
 		trackView->update();
 	}
@@ -297,6 +297,14 @@ void TrackContainerView::deleteTrackView( TrackView * _tv )
 
 	// Custom: deleting a parent (group / instrument) releases its children
 	for (auto child : t->childTracks()) { child->setGroupId(QString()); }
+	// Custom: the hidden frozen audio goes with its track
+	if (auto proxy = t->freezeProxy(); proxy != nullptr && proxy != t)
+	{
+		for (auto tv : m_trackViews)
+		{
+			if (tv->getTrack() == proxy) { deleteTrackView(tv); break; }
+		}
+	}
 
 	removeTrackView( _tv );
 	delete _tv;
@@ -304,6 +312,9 @@ void TrackContainerView::deleteTrackView( TrackView * _tv )
 	Engine::audioEngine()->requestChangeInModel();
 	delete t;
 	Engine::audioEngine()->doneChangeInModel();
+
+	// Custom: the parent may have lost its last child (fold arrow)
+	realignTracks();
 }
 
 

@@ -40,6 +40,7 @@
 #include "DeprecationHelper.h"
 #include "Engine.h"
 #include "embed.h"
+#include "GroupTrack.h"
 #include "GuiApplication.h"
 #include "KeyboardShortcuts.h"
 #include "lmms_math.h"
@@ -1300,6 +1301,26 @@ bool ClipView::splitClip(const TimePos pos)
 
 	m_clip->getTrack()->restoreJournallingState();
 	return true;
+}
+
+void ClipView::paintGroupBorder(QPainter& painter)
+{
+	if (fixedClips()) { return; }
+	// nearest group above the track (automation tracks may sit below an instrument inside a group)
+	const Track* group = nullptr;
+	int guard = 0;
+	for (auto parent = m_trackView->getTrack()->parentTrack(); parent != nullptr && guard < 8; parent = parent->parentTrack(), ++guard)
+	{
+		if (parent->type() == Track::Type::Group) { group = parent; break; }
+	}
+	if (group == nullptr || !group->color().has_value()) { return; }
+
+	painter.save();
+	painter.setRenderHint(QPainter::Antialiasing, false);
+	painter.setBrush(Qt::NoBrush);
+	painter.setPen(QPen(group->color().value(), 2));
+	painter.drawRect(QRectF(1, 1, width() - 2, height() - 2));
+	painter.restore();
 }
 
 } // namespace lmms::gui

@@ -180,6 +180,7 @@ void Track::saveTrack(QDomDocument& doc, QDomElement& element, bool presetMode)
 		if (!m_uid.isEmpty()) { element.setAttribute("uid", m_uid); }
 		if (m_collapsed) { element.setAttribute("collapsed", 1); }
 		if (m_frozen) { element.setAttribute("frozen", 1); }
+		if (!m_freezeProxyOf.isEmpty()) { element.setAttribute("freezeproxyof", m_freezeProxyOf); }
 	}
 	
 	QDomElement tsDe = doc.createElement( nodeName() );
@@ -236,6 +237,7 @@ void Track::loadTrack(const QDomElement& element, bool presetMode)
 		setGroupId(element.attribute("group"));
 		setCollapsed(element.attribute("collapsed", "0").toInt() != 0);
 		setFrozen(element.attribute("frozen", "0").toInt() != 0);
+		m_freezeProxyOf = element.attribute("freezeproxyof");
 	}
 
 	if (presetMode)
@@ -509,6 +511,11 @@ void Track::toggleSolo()
 	// Custom: tracks that stay audible when this track is soloed.
 	// Soloing a group keeps its members, soloing a member keeps its group (which has no audio itself).
 	auto keepAudible = [this](const Track* track) {
+		// the frozen audio behaves like the track it belongs to
+		if (track->isFreezeProxy())
+		{
+			if (const auto owner = findTrackByUid(track->freezeProxyOf())) { track = owner; }
+		}
 		if (track == this) { return true; }
 		if (type() == Type::Group && track->groupId() == static_cast<const GroupTrack*>(this)->uid()) { return true; }
 		if (track->type() == Type::Group && !m_groupId.isEmpty()
@@ -557,6 +564,12 @@ void Track::toggleSolo()
 bool Track::isMuted() const
 {
 	if (m_mutedModel.value()) { return true; }
+	// Custom: the frozen audio follows the frozen track (and is silent without it)
+	if (!m_freezeProxyOf.isEmpty())
+	{
+		const auto owner = findTrackByUid(m_freezeProxyOf);
+		return owner == nullptr || !owner->isFrozen() || owner->isMuted();
+	}
 	if (m_groupId.isEmpty()) { return false; }
 	const auto g = group();
 	return g != nullptr && g->isMutedSelf();
@@ -587,6 +600,32 @@ const QString& Track::uid() const
 void Track::regenerateUid()
 {
 	m_uid = QUuid::createUuid().toString(QUuid::WithoutBraces);
+}
+
+
+
+
+Track* Track::findTrackByUid(const QString& uid) const
+{
+	if (uid.isEmpty()) { return nullptr; }
+	for (const auto& track : m_trackContainer->tracks())
+	{
+		if (track->m_uid == uid) { return track; }
+	}
+	return nullptr;
+}
+
+
+
+
+Track* Track::freezeProxy() const
+{
+	if (m_uid.isEmpty()) { return nullptr; }
+	for (const auto& track : m_trackContainer->tracks())
+	{
+		if (track->m_freezeProxyOf == m_uid) { return track; }
+	}
+	return nullptr;
 }
 
 

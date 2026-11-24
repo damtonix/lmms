@@ -51,6 +51,8 @@ public:
 	EffectChain( Model * _parent );
 	~EffectChain() override;
 
+	BoolModel* enabledModel() { return &m_enabledModel; } //!< Custom
+
 	void saveSettings( QDomDocument & _doc, QDomElement & _parent ) override;
 	void loadSettings( const QDomElement & _this ) override;
 

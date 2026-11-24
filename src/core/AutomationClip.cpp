@@ -873,9 +873,10 @@ QString AutomationClip::name() const
 	{
 		return Clip::name();
 	}
+	// Custom: no automatic name once a control is connected (the track carries the name)
 	if (!m_objects.empty() && m_objects.front() != nullptr)
 	{
-		return m_objects.front()->fullDisplayName();
+		return QString();
 	}
 	return tr( "Drag a control while pressing <%1>" ).arg(UI_COPY_KEY);
 }

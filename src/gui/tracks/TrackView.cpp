@@ -46,6 +46,8 @@
 #include "StringPairDrag.h"
 #include "Track.h"
 #include "TrackGrip.h"
+#include "SampleThumbnailRenderer.h"
+#include "SampleClip.h"
 #include "TrackLabelButton.h"
 #include "TrackContainerView.h"
 #include "ClipView.h"
@@ -369,6 +371,8 @@ void TrackView::createClipView( Clip * clip )
 		tv->setSelected( true );
 	}
 	clip->selectViewOnCreate( false );
+	// Custom: keep the frozen/muted overlay above new clips
+	if (m_frozenOverlay && m_frozenOverlay->isVisible()) { m_frozenOverlay->raise(); }
 }
 
 
@@ -378,6 +382,7 @@ void TrackView::muteChanged()
 {
 	FadeButton * indicator = getActivityIndicator();
 	if (indicator) { setIndicatorMute(indicator, m_track->isMuted()); }
+	updateFrozenState();
 }
 
 
@@ -464,23 +469,107 @@ void TrackView::applyGroupIndent()
 
 
 
+namespace
+{
+//! Custom: drawn over the clips – frozen tracks show their rendered audio, muted tracks are struck through
+class TrackStateOverlay : public QWidget
+{
+public:
+	TrackStateOverlay(TrackView* trackView, QWidget* parent) : QWidget(parent), m_trackView(trackView)
+	{
+		setAttribute(Qt::WA_TransparentForMouseEvents);
+	}
+
+protected:
+	void paintEvent(QPaintEvent*) override
+	{
+		QPainter p(this);
+		auto track = m_trackView->getTrack();
+
+		if (track->isFrozen())
+		{
+			p.fillRect(rect(), QColor(40, 70, 110, 200));
+			// waveform of the frozen audio
+			if (auto proxy = track->freezeProxy(); proxy != nullptr && !proxy->getClips().empty())
+			{
+				if (auto clip = dynamic_cast<SampleClip*>(proxy->getClips().front());
+					clip != nullptr && clip->sample().sampleSize() > 0 && clip->sampleThumbnailCache() != nullptr)
+				{
+					auto tcv = m_trackView->trackContainerView();
+					const double pxPerTick = tcv->pixelsPerBar() / TimePos::ticksPerBar();
+					const double x = (clip->startPosition() - tcv->currentPosition()) * pxPerTick;
+					const double w = clip->sampleLength() * pxPerTick;
+					p.setPen(QColor(160, 205, 255));
+					const auto param = SampleThumbnailRenderer::VisualizeParameters{
+						.cache = clip->sampleThumbnailCache(),
+						.rect = QRectF(x, 3, w, height() - 6),
+						.amplification = clip->sample().amplification(),
+						.reversed = clip->sample().reversed()
+					};
+					SampleThumbnailRenderer::visualize(param, p);
+				}
+			}
+			p.setPen(QColor(216, 236, 255));
+			QFont f = font();
+			f.setBold(true);
+			f.setPointSizeF(std::max(7.0, f.pointSizeF() * 0.85));
+			p.setFont(f);
+			p.drawText(rect().adjusted(6, 2, -6, -2), Qt::AlignLeft | Qt::AlignTop, TrackView::tr("EINGEFROREN"));
+		}
+
+		if (track->isMuted())
+		{
+			p.fillRect(rect(), QColor(0, 0, 0, 110));
+			p.setPen(QPen(QColor(212, 212, 212, 190), 2));
+			p.drawLine(0, height() / 2, width(), height() / 2);
+		}
+	}
+
+private:
+	TrackView* m_trackView;
+};
+} // namespace
+
+
+
+
 void TrackView::updateFrozenState()
 {
 	const bool frozen = m_track->isFrozen();
+	const bool muted = m_track->isMuted();
+
 	// no clip editing while frozen
 	m_trackContentWidget.setEnabled(!frozen);
-	if (frozen)
+
+	// the whole track row is tinted when frozen
+	QPalette pal = palette();
+	if (frozen) { pal.setColor(QPalette::Window, QColor(44, 74, 110)); }
+	if (m_track->type() != Track::Type::Group) { m_trackSettingsWidget.setPalette(pal); }
+	m_trackOperationsWidget.setPalette(pal);
+	m_trackOperationsWidget.update();
+
+	// muted tracks: struck-through name
+	if (auto label = m_trackSettingsWidget.findChild<TrackLabelButton*>(QString(), Qt::FindDirectChildrenOnly))
+	{
+		QFont f = label->font();
+		if (f.strikeOut() != muted)
+		{
+			f.setStrikeOut(muted);
+			label->setFont(f);
+		}
+	}
+
+	if (frozen || muted)
 	{
 		if (m_frozenOverlay == nullptr)
 		{
-			m_frozenOverlay = new QLabel(tr("   EINGEFROREN  (Zahnrad \xe2\x86\x92 Spur auftauen)"), &m_trackContentWidget);
-			m_frozenOverlay->setAttribute(Qt::WA_TransparentForMouseEvents);
-			m_frozenOverlay->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-			m_frozenOverlay->setStyleSheet("background-color: rgba(90, 160, 255, 70); color: #d8ecff; font-weight: bold;");
+			m_frozenOverlay = new TrackStateOverlay(this, &m_trackContentWidget);
+			connect(m_trackContainerView, &TrackContainerView::positionChanged, m_frozenOverlay, qOverload<>(&QWidget::update));
 		}
 		m_frozenOverlay->setGeometry(0, 0, m_trackContentWidget.width(), height());
 		m_frozenOverlay->show();
 		m_frozenOverlay->raise();
+		m_frozenOverlay->update();
 	}
 	else if (m_frozenOverlay != nullptr)
 	{

@@ -296,14 +296,14 @@ void TrackOperationsWidget::addGroupMenu(QMenu* toMenu)
 	const bool inSong = tcv->model() == Engine::getSong();
 
 	// Custom: freeze / bounce for instrument tracks
-	if (track->type() == Track::Type::Instrument)
+	if (inSong && track->type() == Track::Type::Instrument)
 	{
 		toMenu->addSeparator();
 		toMenu->addAction(embed::getIconPixmap(track->isFrozen() ? "freeze_off" : "freeze", 16, 16),
-			track->isFrozen() ? tr("Spur auftauen") : tr("Spur einfrieren (Instrument und Effekte anhalten)"),
+			track->isFrozen() ? tr("Spur auftauen") : tr("Spur einfrieren (als Audio, Instrument ruht)"),
 			this, [track] {
-				track->setFrozen(!track->isFrozen());
-				Engine::getSong()->setModified();
+				if (track->isFrozen()) { getGUI()->mainWindow()->unfreezeTrack(track); }
+				else { getGUI()->mainWindow()->freezeTrack(track); }
 			});
 	}
 	if (inSong && (track->type() == Track::Type::Instrument || track->type() == Track::Type::Sample))

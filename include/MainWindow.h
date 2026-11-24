@@ -62,6 +62,11 @@ public:
 	QString askWavFile(const QString& title, const QString& baseName);
 	//! Custom: render only @p track and insert the result as a sample track below it
 	void bounceTrack(Track* track);
+	//! Custom: render only @p track (solo); @p neutralMaster bypasses master effects/volume
+	bool renderTrackSolo(Track* track, const QString& path, const QString& title, bool neutralMaster);
+	//! Custom: freeze = render the track and play that audio instead of the instrument
+	void freezeTrack(Track* track);
+	void unfreezeTrack(Track* track);
 	//! Custom: re-read the configured sample folders into the samples tab
 	void refreshSamplesBrowser();
 	static QString samplesBrowserDirectories();

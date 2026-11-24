@@ -103,6 +103,14 @@ public:
 	// -- Custom: freeze (stop all processing, e.g. of a VST) --
 	bool isFrozen() const { return m_frozen; }
 	void setFrozen(bool frozen);
+	//! For the hidden sample track that plays the frozen audio: uid of the frozen track
+	const QString& freezeProxyOf() const { return m_freezeProxyOf; }
+	void setFreezeProxyOf(const QString& uid) { m_freezeProxyOf = uid; }
+	bool isFreezeProxy() const { return !m_freezeProxyOf.isEmpty(); }
+	//! The hidden sample track playing this (frozen) track's audio, or nullptr
+	Track* freezeProxy() const;
+	//! Any track of the same container with this uid
+	Track* findTrackByUid(const QString& uid) const;
 	// ------------------------------------------------
 
 	using clipVector = std::vector<Clip*>;
@@ -363,6 +371,7 @@ private:
 	mutable QString m_uid;
 	bool m_collapsed = false;
 	bool m_frozen = false;
+	QString m_freezeProxyOf;
 
 	friend class gui::TrackView;
 
