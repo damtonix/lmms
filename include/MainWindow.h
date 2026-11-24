@@ -70,6 +70,7 @@ public:
 	//! Custom: re-read the configured sample folders into the samples tab
 	void refreshSamplesBrowser();
 	static QString samplesBrowserDirectories();
+	static QString customBrowserDirectories(const QString& configKey, const QString& defaultDirs);
 
 	QMdiArea* workspace()
 	{
@@ -218,6 +219,8 @@ private:
 	bool guiSaveProjectAs( const QString & filename );
 
 	FileBrowser* m_samplesBrowser = nullptr; //!< Custom
+	FileBrowser* m_projectsBrowser = nullptr; //!< Custom
+	FileBrowser* m_presetsBrowser = nullptr; //!< Custom
 
 	class MovableQMdiArea : public QMdiArea
 	{

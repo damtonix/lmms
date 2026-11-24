@@ -1190,7 +1190,7 @@ void Song::loadProject( const QString & fileName )
 
 	Engine::audioEngine()->doneChangeInModel();
 
-	ConfigManager::inst()->addRecentlyOpenedProject( fileName );
+	if (!m_reloadingRewritten) { ConfigManager::inst()->addRecentlyOpenedProject( fileName ); }
 
 	Engine::projectJournal()->setJournalling( true );
 
@@ -1224,6 +1224,18 @@ void Song::loadProject( const QString & fileName )
 
 
 // only save current song as filename and do nothing else
+void Song::reloadFromRewrittenFile(const QString& tempFile, const QString& realFileName)
+{
+	m_reloadingRewritten = true;
+	loadProject(tempFile);
+	m_reloadingRewritten = false;
+	setProjectFileName(realFileName);
+	setModified();
+}
+
+
+
+
 bool Song::saveProjectFile(const QString & filename, bool withResources)
 {
 	using gui::getGUI;

@@ -253,6 +253,8 @@ public:
 	bool guiSaveProject();
 	bool guiSaveProjectAs(const QString & filename);
 	bool saveProjectFile(const QString & filename, bool withResources = false);
+	//! Custom: load @p tempFile (a rewritten copy of the project) but keep @p realFileName as project file
+	void reloadFromRewrittenFile(const QString& tempFile, const QString& realFileName);
 
 	const QString & projectFileName() const
 	{
@@ -408,6 +410,7 @@ private:
 	void setProjectFileName(QString const & projectFileName);
 
 	AutomationTrack * m_globalAutomationTrack;
+	bool m_reloadingRewritten = false; //!< Custom
 
 	IntModel m_tempoModel;
 	MeterModel m_timeSigModel;

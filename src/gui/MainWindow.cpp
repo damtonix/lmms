@@ -63,6 +63,7 @@
 #include "PluginFactory.h"
 #include "PluginView.h"
 #include "ProjectJournal.h"
+#include "ProjectFilesDialog.h"
 #include "ProjectNotes.h"
 #include "ProjectRenderer.h"
 #include "RenderManager.h"
@@ -127,10 +128,12 @@ MainWindow::MainWindow() :
 	sideBar->appendTab(new FileBrowser(FileBrowser::Type::Favorites, ConfigManager::inst()->favoriteItems().join("*"), FileItem::defaultFilters(), "My Favorites",
 		embed::getIconPixmap("star").transformed(QTransform().rotate(90)), splitter, false, "", ""));
 
-	sideBar->appendTab(new FileBrowser(FileBrowser::Type::Normal,
-		confMgr->userProjectsDir() + "*" + confMgr->factoryProjectsDir(), "*.mmp *.mmpz *.xml *.mid *.mpt",
+	m_projectsBrowser = new FileBrowser(FileBrowser::Type::Normal,
+		customBrowserDirectories("customprojectsdir", confMgr->userProjectsDir() + "*" + confMgr->factoryProjectsDir()),
+		"*.mmp *.mmpz *.xml *.mid *.mpt",
 		tr("My Projects"), embed::getIconPixmap("project_file").transformed(QTransform().rotate(90)), splitter, false,
-		confMgr->userProjectsDir(), confMgr->factoryProjectsDir()));
+		confMgr->userProjectsDir(), confMgr->factoryProjectsDir());
+	sideBar->appendTab(m_projectsBrowser);
 
 	m_samplesBrowser = new FileBrowser(FileBrowser::Type::Normal,
 		samplesBrowserDirectories(), FileItem::defaultFilters(), tr("My Samples"),
@@ -138,10 +141,12 @@ MainWindow::MainWindow() :
 		confMgr->userSamplesDir(), confMgr->factorySamplesDir());
 	sideBar->appendTab(m_samplesBrowser);
 
-	sideBar->appendTab(new FileBrowser(FileBrowser::Type::Normal,
-		confMgr->userPresetsDir() + "*" + confMgr->factoryPresetsDir(), "*.xpf *.cs.xml *.xiz *.lv2", tr("My Presets"),
+	m_presetsBrowser = new FileBrowser(FileBrowser::Type::Normal,
+		customBrowserDirectories("custompresetsdir", confMgr->userPresetsDir() + "*" + confMgr->factoryPresetsDir()),
+		"*.xpf *.cs.xml *.xiz *.lv2", tr("My Presets"),
 		embed::getIconPixmap("preset_file").transformed(QTransform().rotate(90)), splitter, false,
-		confMgr->userPresetsDir(), confMgr->factoryPresetsDir()));
+		confMgr->userPresetsDir(), confMgr->factoryPresetsDir());
+	sideBar->appendTab(m_presetsBrowser);
 
 	sideBar->appendTab(new FileBrowser(FileBrowser::Type::Normal, QDir::homePath(), FileItem::defaultFilters(),
 		tr("My Home"), embed::getIconPixmap("home").transformed(QTransform().rotate(90)), splitter, false));
@@ -321,6 +326,10 @@ void MainWindow::finalize()
 
 	project_menu->addAction(embed::getIconPixmap("project_import"), tr("Import..."),
 		this, &MainWindow::onImportProject);
+
+	// Custom: overview / relinking of all files used by the project
+	project_menu->addAction(embed::getIconPixmap("sample_file"), tr("Projektdateien (Samples, Pfade)..."),
+		this, [this] { ProjectFilesDialog(this).exec(); });
 
 	addAction(project_menu, "project_export", tr("E&xport..."),
 		keySequence(Qt::CTRL, Qt::Key_E), &MainWindow::onExportProject);
@@ -1644,22 +1653,37 @@ void MainWindow::onQuickExport()
 		tr("%1 wurde exportiert und als neue Spur geladen.").arg(QFileInfo(path).fileName()),
 		embed::getIconPixmap("project_export", 24, 24), 3000);
 }
+QString MainWindow::customBrowserDirectories(const QString& configKey, const QString& defaultDirs)
+{
+	// Custom: own folder from the settings shown in front of the default ones
+	const QString custom = ConfigManager::inst()->value("paths", configKey);
+	if (!custom.isEmpty() && QFileInfo(custom).isDir())
+	{
+		return QDir::cleanPath(custom) + "/*" + defaultDirs;
+	}
+	return defaultDirs;
+}
+
 QString MainWindow::samplesBrowserDirectories()
 {
 	auto confMgr = ConfigManager::inst();
-	QString dirs = confMgr->userSamplesDir() + "*" + confMgr->factorySamplesDir();
-	// Custom: own sample folder from the settings
-	const QString custom = confMgr->value("paths", "customsamplesdir");
-	if (!custom.isEmpty() && QFileInfo(custom).isDir())
-	{
-		dirs = QDir::cleanPath(custom) + "/*" + dirs;
-	}
-	return dirs;
+	return customBrowserDirectories("customsamplesdir", confMgr->userSamplesDir() + "*" + confMgr->factorySamplesDir());
 }
 
 void MainWindow::refreshSamplesBrowser()
 {
+	auto confMgr = ConfigManager::inst();
 	if (m_samplesBrowser) { m_samplesBrowser->setDirectories(samplesBrowserDirectories()); }
+	if (m_projectsBrowser)
+	{
+		m_projectsBrowser->setDirectories(customBrowserDirectories("customprojectsdir",
+			confMgr->userProjectsDir() + "*" + confMgr->factoryProjectsDir()));
+	}
+	if (m_presetsBrowser)
+	{
+		m_presetsBrowser->setDirectories(customBrowserDirectories("custompresetsdir",
+			confMgr->userPresetsDir() + "*" + confMgr->factoryPresetsDir()));
+	}
 }
 
 bool MainWindow::renderToWav(const QString& path, bool betweenLoopMarkers, const QString& title)

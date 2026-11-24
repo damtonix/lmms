@@ -160,7 +160,9 @@ SetupDialog::SetupDialog(ConfigTab tab_to_open) :
 #endif
 	m_themeDir(QDir::toNativeSeparators(ConfigManager::inst()->themeDir())),
 	m_backgroundPicFile(QDir::toNativeSeparators(ConfigManager::inst()->backgroundPicFile())),
-	m_customSamplesDir(QDir::toNativeSeparators(ConfigManager::inst()->value("paths", "customsamplesdir")))
+	m_customSamplesDir(QDir::toNativeSeparators(ConfigManager::inst()->value("paths", "customsamplesdir"))),
+	m_customProjectsDir(QDir::toNativeSeparators(ConfigManager::inst()->value("paths", "customprojectsdir"))),
+	m_customPresetsDir(QDir::toNativeSeparators(ConfigManager::inst()->value("paths", "custompresetsdir")))
 {
 	setWindowIcon(embed::getIconPixmap("setup_general"));
 	setWindowTitle(tr("Settings"));
@@ -842,6 +844,14 @@ SetupDialog::SetupDialog(ConfigTab tab_to_open) :
 		SLOT(setCustomSamplesDir(const QString&)),
 		SLOT(openCustomSamplesDir()),
 		m_customSamplesDirLineEdit);
+	addPathEntry(tr("Eigener Projekt-Ordner (erscheint im Projekte-Tab)"), m_customProjectsDir,
+		SLOT(setCustomProjectsDir(const QString&)),
+		SLOT(openCustomProjectsDir()),
+		m_customProjectsDirLineEdit);
+	addPathEntry(tr("Eigener Preset-Ordner (erscheint im Presets-Tab)"), m_customPresetsDir,
+		SLOT(setCustomPresetsDir(const QString&)),
+		SLOT(openCustomPresetsDir()),
+		m_customPresetsDirLineEdit);
 	addPathEntry(tr("SF2 directory"), m_sf2Dir,
 		SLOT(setSF2Dir(const QString&)),
 		SLOT(openSF2Dir()),
@@ -1044,6 +1054,8 @@ void SetupDialog::accept()
 	ConfigManager::inst()->setBackgroundPicFile(m_backgroundPicFile);
 	// Custom: own sample folder, shown in the samples tab
 	ConfigManager::inst()->setValue("paths", "customsamplesdir", QDir::fromNativeSeparators(m_customSamplesDir).trimmed());
+	ConfigManager::inst()->setValue("paths", "customprojectsdir", QDir::fromNativeSeparators(m_customProjectsDir).trimmed());
+	ConfigManager::inst()->setValue("paths", "custompresetsdir", QDir::fromNativeSeparators(m_customPresetsDir).trimmed());
 	if (getGUI() != nullptr && getGUI()->mainWindow() != nullptr) { getGUI()->mainWindow()->refreshSamplesBrowser(); }
 
 	// Tell all audio-settings-widgets to save their settings.
@@ -1513,6 +1525,42 @@ void SetupDialog::openCustomSamplesDir()
 void SetupDialog::setCustomSamplesDir(const QString & dir)
 {
 	m_customSamplesDir = dir;
+}
+
+
+
+
+void SetupDialog::openCustomProjectsDir()
+{
+	QString new_dir = FileDialog::getExistingDirectory(this,
+		tr("Projekt-Ordner w\xc3\xa4hlen"), m_customProjectsDir);
+	if (!new_dir.isEmpty()) { m_customProjectsDirLineEdit->setText(QDir::toNativeSeparators(new_dir)); }
+}
+
+
+
+
+void SetupDialog::setCustomProjectsDir(const QString & dir)
+{
+	m_customProjectsDir = dir;
+}
+
+
+
+
+void SetupDialog::openCustomPresetsDir()
+{
+	QString new_dir = FileDialog::getExistingDirectory(this,
+		tr("Preset-Ordner w\xc3\xa4hlen"), m_customPresetsDir);
+	if (!new_dir.isEmpty()) { m_customPresetsDirLineEdit->setText(QDir::toNativeSeparators(new_dir)); }
+}
+
+
+
+
+void SetupDialog::setCustomPresetsDir(const QString & dir)
+{
+	m_customPresetsDir = dir;
 }
 
 
