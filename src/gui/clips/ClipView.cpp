@@ -564,7 +564,7 @@ void ClipView::mousePressEvent( QMouseEvent * me )
 					? tr("Press <%1> or <Alt> for unquantized splitting.\nPress <Shift> for destructive splitting.")
 					: tr("Press <%1> or <Alt> for unquantized splitting.");
 			}
-			else if (dynamic_cast<MidiClip*>(m_clip) && !fixedClips())
+			else if ((dynamic_cast<MidiClip*>(m_clip) || dynamic_cast<AutomationClip*>(m_clip)) && !fixedClips())
 			{
 				hint = tr("Press <%1> or <Alt> for unquantized resizing.") + "\n"
 					+ tr("<Shift> am rechten Rand: Clip virtuell wiederholen (Loop)");
@@ -716,13 +716,18 @@ void ClipView::mouseMoveEvent( QMouseEvent * me )
 			TimePos l = static_cast<int>(pos.x() * TimePos::ticksPerBar() / ppb);
 
 			auto midiClip = dynamic_cast<MidiClip*>(m_clip);
-			// Custom: Shift-drag on the right edge of a MIDI clip repeats it virtually (loop)
-			if (midiClip && !fixedClips() && (me->modifiers() & Qt::ShiftModifier) && !unquantizedModHeld(me))
+			auto autoClip = dynamic_cast<AutomationClip*>(m_clip);
+			// Custom: Shift-drag on the right edge of a MIDI/automation clip repeats it virtually (loop)
+			if ((midiClip || autoClip) && !fixedClips() && (me->modifiers() & Qt::ShiftModifier) && !unquantizedModHeld(me))
 			{
-				const int offset = midiClip->startTimeOffset();
+				const auto loopLength = [&] { return midiClip ? midiClip->loopLength() : autoClip->loopLength(); };
+				const auto setLoopLength = [&](tick_t len) {
+					if (midiClip) { midiClip->setLoopLength(len); } else { autoClip->setLoopLength(len); }
+				};
+				const int offset = m_clip->startTimeOffset();
 				// The original part: the existing loop or the clip as it was when the drag started
-				const tick_t original = midiClip->isLooped()
-					? midiClip->loopLength()
+				const tick_t original = loopLength() > 0
+					? loopLength()
 					: static_cast<tick_t>(m_initialClipEnd - m_initialClipPos) - offset;
 				const TimePos originalClipLength = original + offset;
 
@@ -730,17 +735,17 @@ void ClipView::mouseMoveEvent( QMouseEvent * me )
 				if (newLength <= originalClipLength)
 				{
 					// dragged back onto the original: remove the loop
-					midiClip->setLoopLength(0);
+					setLoopLength(0);
 					newLength = originalClipLength;
 				}
 				else
 				{
-					midiClip->setLoopLength(original);
+					setLoopLength(original);
 				}
 				if (newLength != m_clip->length()) { m_clip->changeLength(newLength); }
 				m_clip->setAutoResize(false);
 
-				s_textFloat->setTitle(midiClip->isLooped()
+				s_textFloat->setTitle(loopLength() > 0
 					? tr("Loop: %1x").arg(QString::number((newLength - offset) / static_cast<double>(original), 'f', 2))
 					: tr("Loop: aus"));
 			}

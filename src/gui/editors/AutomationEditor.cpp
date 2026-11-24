@@ -1366,12 +1366,12 @@ void AutomationEditor::paintEvent(QPaintEvent * pe )
 	}
 
 	// draw clip bounds overlay
-	p.fillRect(xCoordOfTick(m_clip->length() - m_clip->startTimeOffset()), TOP_MARGIN, width() - 10, grid_bottom,
+	p.fillRect(xCoordOfTick(m_clip->editRangeEnd()), TOP_MARGIN, width() - 10, grid_bottom,
 		m_outOfBoundsShade);
 	p.fillRect(0, TOP_MARGIN, xCoordOfTick(-m_clip->startTimeOffset()), grid_bottom, m_outOfBoundsShade);
 
 	// TODO: Get this out of paint event
-	int l = validClip() ? (int)m_clip->length() - m_clip->startTimeOffset() : 0;
+	int l = validClip() ? (int)m_clip->editRangeEnd() : 0;
 
 	// reset scroll-range
 	if (m_leftRightScroll->maximum() != l)

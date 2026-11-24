@@ -22,6 +22,7 @@
  *
  */
 #include "AutomationClipView.h"
+#include "Song.h"
 
 #include <QApplication>
 #include <QMouseEvent>
@@ -169,6 +170,18 @@ void AutomationClipView::constructContextMenu( QMenu * _cm )
 
 	_cm->addAction( embed::getIconPixmap( "edit_erase" ),
 			tr( "Clear" ), m_clip, SLOT(clear()));
+
+	// Custom: virtual loop
+	if (m_clip->isLooped())
+	{
+		_cm->addAction(embed::getIconPixmap("loop_points_off"), tr("Loop entfernen"), this, [this] {
+			m_clip->addJournalCheckPoint();
+			const TimePos original = m_clip->loopLength() + m_clip->startTimeOffset();
+			m_clip->setLoopLength(0);
+			m_clip->changeLength(original);
+			Engine::getSong()->setModified();
+		});
+	}
 	_cm->addSeparator();
 
 	_cm->addAction( embed::getIconPixmap( "reload" ), tr( "Reset name" ),
@@ -274,7 +287,7 @@ void AutomationClipView::paintEvent( QPaintEvent * )
 	const float y_scale = max - min;
 	const float h = ( height() - 2 * BORDER_WIDTH ) / y_scale;
 	const float ppTick  = ppb / TimePos::ticksPerBar();
-	const int offset =  m_clip->startTimeOffset() * ppTick;
+	int offset =  m_clip->startTimeOffset() * ppTick;
 
 	p.translate( 0.0f, max * height() / y_scale - BORDER_WIDTH );
 	p.scale( 1.0f, -h );
@@ -290,6 +303,17 @@ void AutomationClipView::paintEvent( QPaintEvent * )
 	lin2grad.setColorAt( 0, col.darker( 150 ) );
 
 	p.setRenderHints( QPainter::Antialiasing, true );
+
+	// Custom: virtual loop – draw the curve of the original part once per repetition
+	const tick_t loopLen = m_clip->loopLength();
+	const int repetitions = loopLen > 0
+		? std::max<int>(1, (m_clip->length() - m_clip->startTimeOffset() + loopLen - 1) / loopLen)
+		: 1;
+	const int baseOffset = offset;
+	for (int repetition = 0; repetition < repetitions; ++repetition)
+	{
+	offset = baseOffset + static_cast<int>(repetition * loopLen * ppTick);
+	if (loopLen > 0) { p.setClipRect(QRectF(offset, -1e6, loopLen * ppTick, 2e6)); }
 	for( AutomationClip::timeMap::const_iterator it =
 						m_clip->getTimeMap().begin();
 					it != m_clip->getTimeMap().end(); ++it )
@@ -350,9 +374,23 @@ void AutomationClipView::paintEvent( QPaintEvent * )
 		}
 		delete [] values;
 	}
+	} // repetitions
+	p.setClipping(false);
+	offset = baseOffset;
 
 	p.setRenderHints( QPainter::Antialiasing, false );
 	p.resetTransform();
+
+	// Custom: loop symbol at every repetition start
+	if (loopLen > 0 && !fixedClips())
+	{
+		const QPixmap loopIcon = embed::getIconPixmap("loop_points_on", 12, 12);
+		for (tick_t t = loopLen; t < m_clip->length() - m_clip->startTimeOffset(); t += loopLen)
+		{
+			const int x = static_cast<int>((t + m_clip->startTimeOffset()) * ppTick);
+			p.drawPixmap(x + 2, height() - loopIcon.height() - 3, loopIcon);
+		}
+	}
 
 	// bar lines
 	const int lineSize = 3;

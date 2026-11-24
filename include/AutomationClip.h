@@ -52,6 +52,18 @@ class LMMS_EXPORT AutomationClip : public Clip
 {
 	Q_OBJECT
 public:
+	// -- Custom: virtual loop (like MIDI clips) --
+	tick_t loopLength() const { return m_loopLength; }
+	void setLoopLength(tick_t length);
+	bool isLooped() const { return m_loopLength > 0; }
+	//! End of the editable range: the loop length if looped, else the clip end
+	TimePos editRangeEnd() const;
+	//! Position inside the original part for a position relative to the clip content
+	TimePos loopedPosition(const TimePos& relTime) const
+	{
+		return m_loopLength > 0 && relTime >= m_loopLength ? TimePos(relTime % m_loopLength) : relTime;
+	}
+	// --------------------------------------------
 	enum class ProgressionType
 	{
 		Discrete,
@@ -270,6 +282,7 @@ private:
 	std::vector<jo_id_t> m_idsToResolve;
 	objectVector m_objects;
 	timeMap m_timeMap;	// actual values
+	tick_t m_loopLength = 0; //!< Custom: virtual loop
 	timeMap m_oldTimeMap;	// old values for storing the values before setDragValue() is called.
 	float m_tension;
 	bool m_hasAutomation;

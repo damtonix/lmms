@@ -78,7 +78,7 @@ private:
 	//! @brief Preserves the auto points over different scale
 	void scaleTimemapToFit( float oldMin, float oldMax );
 	
-	bool isResizableBeforeStart() override { return false; }
+	bool isResizableBeforeStart() override { return true; } // Custom: extend to the left
 } ;
 
 

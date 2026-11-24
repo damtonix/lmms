@@ -111,7 +111,7 @@ private:
 
 	bool m_legacySEPattern;
 
-	bool isResizableBeforeStart() override { return false; }
+	bool isResizableBeforeStart() override { return true; } // Custom: extend to the left
 	
 	bool destructiveSplitClip(const TimePos pos) override;
 } ;

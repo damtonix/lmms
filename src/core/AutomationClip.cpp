@@ -71,6 +71,7 @@ AutomationClip::AutomationClip( const AutomationClip & _clip_to_copy ) :
 	m_isRecording(_clip_to_copy.m_isRecording),
 	m_lastRecordedValue(0)
 {
+	m_loopLength = _clip_to_copy.m_loopLength;
 	// Locks the mutex of the copied AutomationClip to make sure it
 	// doesn't change while it's being copied
 	QMutexLocker m(&_clip_to_copy.m_clipMutex);
@@ -192,8 +193,39 @@ TimePos AutomationClip::timeMapLength() const
 
 
 
+void AutomationClip::setLoopLength(tick_t length)
+{
+	length = std::max<tick_t>(0, length);
+	if (m_loopLength == length) { return; }
+	m_loopLength = length;
+	emit dataChanged();
+}
+
+
+
+
+TimePos AutomationClip::editRangeEnd() const
+{
+	return isLooped() ? TimePos(m_loopLength) : TimePos(length() - startTimeOffset());
+}
+
+
+
+
 void AutomationClip::updateLength()
 {
+	// Custom: a looped clip keeps its total length; grow the original part if points were added beyond it
+	if (isLooped())
+	{
+		const tick_t end = timeMapLength();
+		if (end > m_loopLength)
+		{
+			m_loopLength = TimePos(end).nextFullBar() * TimePos::ticksPerBar();
+			if (length() - startTimeOffset() < m_loopLength) { changeLength(m_loopLength + startTimeOffset()); }
+		}
+		return;
+	}
+
 	// Technically it only matters if the clip has been resized from the right, but this
 	// checks if it has been resized from either direction.
 	if (getAutoResize())
@@ -752,6 +784,7 @@ void AutomationClip::saveSettings( QDomDocument & _doc, QDomElement & _this )
 	_this.setAttribute( "mute", QString::number( isMuted() ) );
 	_this.setAttribute("off", startTimeOffset());
 	_this.setAttribute("autoresize", QString::number(getAutoResize()));
+	if (isLooped()) { _this.setAttribute("looplen", m_loopLength); }
 
 	if (const auto& c = color())
 	{
@@ -795,6 +828,7 @@ void AutomationClip::loadSettings( const QDomElement & _this )
 	bool shouldGenerateTangents = false;
 
 	clear();
+	m_loopLength = std::max(0, _this.attribute("looplen", "0").toInt());
 
 	movePosition( _this.attribute( "pos" ).toInt() );
 	setName( _this.attribute( "name" ) );

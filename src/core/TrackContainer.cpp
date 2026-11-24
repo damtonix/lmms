@@ -310,6 +310,7 @@ AutomatedValueMap TrackContainer::automatedValuesFromTracks(const TrackList &tra
 			TimePos relTime = time - p->startPosition() - p->startTimeOffset();
 			if (!p->isInPattern()) {
 				relTime = std::min(static_cast<int>(relTime), p->length() - p->startTimeOffset());
+				relTime = p->loopedPosition(relTime); // Custom: virtual loop
 			}
 			float value = p->valueAt(relTime);
 
