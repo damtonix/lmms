@@ -571,8 +571,9 @@ bool Track::isMuted() const
 		return owner == nullptr || !owner->isFrozen() || owner->isMuted();
 	}
 	if (m_groupId.isEmpty()) { return false; }
-	const auto g = group();
-	return g != nullptr && g->isMutedSelf();
+	// Custom: muting a parent (group or instrument with automation tracks) mutes its children
+	const auto parent = parentTrack();
+	return parent != nullptr && parent != this && parent->isMuted();
 }
 
 

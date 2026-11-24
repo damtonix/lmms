@@ -389,6 +389,11 @@ void TrackView::muteChanged()
 	FadeButton * indicator = getActivityIndicator();
 	if (indicator) { setIndicatorMute(indicator, m_track->isMuted()); }
 	updateFrozenState();
+	// children (e.g. automation tracks) follow the mute state of this track
+	for (auto tv : m_trackContainerView->trackViews())
+	{
+		if (tv != this && tv->getTrack()->parentTrack() == m_track) { tv->muteChanged(); }
+	}
 }
 
 
@@ -437,7 +442,7 @@ void TrackView::applyGroupIndent()
 			m_groupIndentBar = new QWidget(settings);
 			m_groupIndentBar->setAutoFillBackground(true);
 		}
-		QColor color = parent->color().value_or(palette().color(QPalette::Highlight));
+		QColor color = parent->color().value_or(ClipView::groupColorOf(m_track).value_or(palette().color(QPalette::Highlight)));
 		if (parent->isMuted()) { color = color.darker(200); }
 		QPalette pal = m_groupIndentBar->palette();
 		pal.setColor(QPalette::Window, color);
@@ -477,7 +482,7 @@ void TrackView::applyGroupIndent()
 
 namespace
 {
-//! Custom: drawn over the clips of frozen tracks, shows their rendered audio
+//! Custom: drawn over the clips – frozen tracks show their rendered audio, muted tracks get a hatch texture
 class TrackStateOverlay : public QWidget
 {
 public:
@@ -523,6 +528,13 @@ protected:
 			p.drawText(rect().adjusted(6, 2, -6, -2), Qt::AlignLeft | Qt::AlignTop, TrackView::tr("EINGEFROREN"));
 		}
 
+		if (track->isMuted())
+		{
+			// same diagonal texture as the virtual loop part of clips
+			p.fillRect(rect(), QColor(0, 0, 0, 90));
+			p.fillRect(rect(), QBrush(QColor(255, 255, 255, 40), Qt::BDiagPattern));
+		}
+
 	}
 
 private:
@@ -553,6 +565,7 @@ void TrackView::setMixerHighlight(int channel)
 void TrackView::updateFrozenState()
 {
 	const bool frozen = m_track->isFrozen();
+	const bool muted = m_track->isMuted();
 
 	// mixer channel of instrument / sample tracks (for the mixer highlight)
 	IntModel* mixerChannel = nullptr;
@@ -586,7 +599,7 @@ void TrackView::updateFrozenState()
 	m_trackOperationsWidget.setPalette(pal);
 	m_trackOperationsWidget.update();
 
-	if (frozen)
+	if (frozen || muted)
 	{
 		if (m_frozenOverlay == nullptr)
 		{

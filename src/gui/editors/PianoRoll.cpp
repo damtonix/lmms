@@ -25,6 +25,7 @@
  */
 
 #include "PianoRoll.h"
+#include "ClipView.h"
 
 #include <QtMath>  // IWYU pragma: keep
 #include <QApplication>
@@ -3790,11 +3791,16 @@ void PianoRoll::paintEvent(QPaintEvent * pe )
 			{
 				// We've done and checked all, let's draw the note with
 				// the appropriate color
-				const auto fillColor = note->type() == Note::Type::Regular ? m_noteColor : m_stepNoteColor;
+				// Custom: notes of tracks inside a group take the group color
+				const QColor regularColor = ClipView::groupColorOf(m_midiClip->getTrack()).value_or(m_noteColor);
+				const auto fillColor = note->type() == Note::Type::Regular ? regularColor : m_stepNoteColor;
+				const QColor textColor = regularColor != m_noteColor
+					? (regularColor.lightness() > 110 ? QColor(21, 24, 27) : QColor(245, 245, 245))
+					: m_noteTextColor;
 
 				drawNoteRect(
 					p, x + m_whiteKeyWidth, noteYPos(note->key()), note_width,
-					note, fillColor, m_noteTextColor, m_selectedNoteColor,
+					note, fillColor, textColor, m_selectedNoteColor,
 					m_noteOpacity, m_noteBorders, drawNoteNames
 				);
 			}

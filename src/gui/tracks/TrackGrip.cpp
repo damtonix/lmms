@@ -27,6 +27,7 @@
 #include "DataFile.h"
 #include "embed.h"
 #include "KeyboardShortcuts.h"
+#include "ClipView.h"
 #include "GroupTrack.h"
 #include "StringPairDrag.h"
 #include "Track.h"
@@ -127,7 +128,8 @@ void TrackGrip::paintEvent(QPaintEvent*)
 	// Custom: members of a group get a strip in the group's color
 	if (const auto parent = m_trackView->getTrack()->parentTrack())
 	{
-		const auto parentColor = parent->color().value_or(palette().color(QPalette::Highlight));
+		const auto parentColor = parent->color().value_or(
+			ClipView::groupColorOf(m_trackView->getTrack()).value_or(palette().color(QPalette::Highlight)));
 		p.fillRect(QRect(0, 0, 4, height()), parent->isMuted() ? parentColor.darker(200) : parentColor);
 	}
 }

@@ -282,7 +282,8 @@ void AutomationClipView::paintEvent( QPaintEvent * )
 	QLinearGradient lin2grad( 0, min, 0, max );
 	QColor col;
 
-	col = !muted ? painter.pen().brush().color() : mutedColor();
+	// Custom: curve contrasts with the clip background (also on group colors)
+	col = !muted ? (c.lightness() > 110 ? QColor(21, 24, 27, 230) : QColor(255, 255, 255, 230)) : mutedColor();
 
 	lin2grad.setColorAt( 1, col.lighter( 150 ) );
 	lin2grad.setColorAt( 0.5, col );

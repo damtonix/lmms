@@ -1306,9 +1306,14 @@ bool ClipView::splitClip(const TimePos pos)
 
 std::optional<QColor> ClipView::groupColor() const
 {
+	return groupColorOf(m_trackView->getTrack());
+}
+
+std::optional<QColor> ClipView::groupColorOf(const Track* track)
+{
 	// nearest group above the track (automation tracks may sit below an instrument inside a group)
 	int guard = 0;
-	for (auto parent = m_trackView->getTrack()->parentTrack(); parent != nullptr && guard < 8; parent = parent->parentTrack(), ++guard)
+	for (auto parent = track ? track->parentTrack() : nullptr; parent != nullptr && guard < 8; parent = parent->parentTrack(), ++guard)
 	{
 		if (parent->type() == Track::Type::Group) { return parent->color(); }
 	}

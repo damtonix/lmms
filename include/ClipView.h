@@ -64,6 +64,8 @@ class ClipView : public selectableObject, public ModelView
 	Q_PROPERTY(QColor markerColor READ markerColor WRITE setMarkerColor)
 
 public:
+	//! Custom: color of the nearest group above @p track (also through an instrument track)
+	static std::optional<QColor> groupColorOf(const Track* track);
 	const static int BORDER_WIDTH = 2;
 
 	//! @brief Creates a new clip view for the given clip in the given track view.
