@@ -129,6 +129,8 @@ public slots:
 	void applyGroupIndent();
 	//! Custom: show/hide the frozen overlay and lock clip editing
 	void updateFrozenState();
+	//! Custom: highlight all tracks routed to this mixer channel (<= 0: none)
+	static void setMixerHighlight(int channel);
 
 
 protected:
@@ -225,6 +227,9 @@ private:
 	Action m_action = Action::None;
 
 	int m_groupIndent = 0;              //!< Custom: currently applied indent
+	int m_dragStartIndex = -1;          //!< Custom: position when the grip was grabbed
+	bool m_mixerChannelConnected = false; //!< Custom
+	static int s_highlightedMixerChannel; //!< Custom
 	QWidget* m_groupIndentBar = nullptr; //!< Custom: colored bar in the indent area
 	QToolButton* m_foldButton = nullptr; //!< Custom: fold arrow for tracks with child tracks
 	QWidget* m_frozenOverlay = nullptr;  //!< Custom: shown over the content of frozen/muted tracks

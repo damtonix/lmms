@@ -353,7 +353,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           archive: false
-          path: build/lmms-*.exe
+          path: build/PtH-LMMS-*.exe
       - name: Trim ccache and print statistics
         run: |
           ccache --cleanup

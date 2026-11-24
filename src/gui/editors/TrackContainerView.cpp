@@ -422,6 +422,47 @@ void TrackContainerView::createGroupForTrack(TrackView* tv)
 
 
 
+void TrackContainerView::adoptGroupFromPosition(TrackView* tv)
+{
+	auto track = tv->getTrack();
+	if (m_tc != Engine::getSong()) { return; }
+	if (track->type() == Track::Type::Group || track->isFreezeProxy()) { return; }
+	// automation tracks attached to an instrument stay with it
+	if (const auto parent = track->parentTrack(); parent != nullptr && parent->type() != Track::Type::Group) { return; }
+
+	// nearest visible track above the dropped one
+	int j = m_trackViews.indexOf(tv) - 1;
+	while (j >= 0 && m_trackViews[j]->isHidden()) { --j; }
+
+	QString target;
+	if (j >= 0)
+	{
+		const Track* above = m_trackViews[j]->getTrack();
+		if (above->type() == Track::Type::Group)
+		{
+			if (!above->isCollapsed()) { target = above->uid(); }
+		}
+		else
+		{
+			int guard = 0;
+			for (auto p = above->parentTrack(); p != nullptr && guard < 8; p = p->parentTrack(), ++guard)
+			{
+				if (p->type() == Track::Type::Group) { target = p->uid(); break; }
+			}
+		}
+	}
+
+	if (target != track->groupId())
+	{
+		track->addJournalCheckPoint();
+		track->setGroupId(target);
+		if (Engine::getSong()) { Engine::getSong()->setModified(); }
+	}
+}
+
+
+
+
 void TrackContainerView::assignTrackToGroup(Track* track, const QString& groupId)
 {
 	track->addJournalCheckPoint();

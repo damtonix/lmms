@@ -51,6 +51,8 @@ INCLUDE(GenerateExportHeader)
 include(StaticDependencies)
 
 STRING(TOUPPER          "${CMAKE_PROJECT_NAME}" PROJECT_NAME_UCASE)
+# Custom: product name shown in Windows (task manager, installer, start menu, window title)
+SET(PRODUCT_NAME        "PtH-LMMS")
 
 SET(PROJECT_YEAR 2026)
 

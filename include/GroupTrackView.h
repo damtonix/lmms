@@ -40,6 +40,11 @@ public:
 
 	GroupTrack* groupTrack();
 
+protected:
+	//! Custom: instruments, presets, samples or tracks dropped on the group land inside it
+	void dragEnterEvent(QDragEnterEvent* dee) override;
+	void dropEvent(QDropEvent* de) override;
+
 private slots:
 	void toggleCollapsed();
 	void updateCollapsedState();

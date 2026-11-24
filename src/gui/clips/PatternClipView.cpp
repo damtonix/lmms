@@ -95,7 +95,6 @@ void PatternClipView::paintEvent(QPaintEvent*)
 	if( !needsUpdate() )
 	{
 		painter.drawPixmap( 0, 0, m_paintPixmap );
-		paintGroupBorder(painter);
 		return;
 	}
 
@@ -170,7 +169,8 @@ void PatternClipView::paintEvent(QPaintEvent*)
 
 	QPainter pixPainter(&midiPatternPixmap);
 	pixPainter.setPen(Qt::NoPen);
-	const auto noteColor = QColor(m_noteColor.red(), m_noteColor.green(), m_noteColor.blue());
+	// Custom: note color contrasts with the clip background
+	const auto noteColor = c.lightness() > 110 ? QColor(m_noteColor.red(), m_noteColor.green(), m_noteColor.blue()) : QColor(240, 240, 240);
 	pixPainter.setBrush(QBrush(noteColor));
 
 	TimePos longestLength(1);
@@ -248,7 +248,6 @@ void PatternClipView::paintEvent(QPaintEvent*)
 	p.end();
 	
 	painter.drawPixmap( 0, 0, m_paintPixmap );
-	paintGroupBorder(painter);
 }
 
 

@@ -230,7 +230,6 @@ void AutomationClipView::paintEvent( QPaintEvent * )
 	if( !needsUpdate() )
 	{
 		painter.drawPixmap( 0, 0, m_paintPixmap );
-		paintGroupBorder(painter);
 		return;
 	}
 
@@ -406,7 +405,6 @@ void AutomationClipView::paintEvent( QPaintEvent * )
 	p.end();
 
 	painter.drawPixmap( 0, 0, m_paintPixmap );
-	paintGroupBorder(painter);
 }
 
 

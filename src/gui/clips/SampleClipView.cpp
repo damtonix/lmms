@@ -211,7 +211,6 @@ void SampleClipView::paintEvent( QPaintEvent * pe )
 	if( !needsUpdate() )
 	{
 		painter.drawPixmap(m_paintPixmapXPosition, 0, m_paintPixmap);
-		paintGroupBorder(painter);
 		return;
 	}
 
@@ -254,7 +253,8 @@ void SampleClipView::paintEvent( QPaintEvent * pe )
 		p.fillRect( rect(), c );
 	}
 
-	auto clipColor = m_clip->color().value_or(m_clip->getTrack()->color().value_or(painter.pen().brush().color()));
+	// Custom: waveform in a color that contrasts with the clip background
+	auto clipColor = c.lightness() > 110 ? QColor(21, 24, 27) : QColor(235, 235, 235);
 
 	p.setPen(clipColor);
 
@@ -347,7 +347,6 @@ void SampleClipView::paintEvent( QPaintEvent * pe )
 	p.end();
 
 	painter.drawPixmap(m_paintPixmapXPosition, 0, m_paintPixmap);
-	paintGroupBorder(painter);
 }
 
 

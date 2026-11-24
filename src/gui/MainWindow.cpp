@@ -611,7 +611,7 @@ void MainWindow::resetWindowTitle()
 		title += " - " + tr( "Recover session. Please save your work!" );
 	}
 
-	setWindowTitle( title + " - " + tr( "LMMS %1" ).arg( LMMS_VERSION ) );
+	setWindowTitle( title + " - " + tr( "PtH-LMMS %1" ).arg( LMMS_VERSION ) );
 }
 
 

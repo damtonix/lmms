@@ -148,6 +148,8 @@ public:
 	void createGroupForTrack(TrackView* tv);
 	//! Custom: put @p track into the group with id @p groupId (empty = remove from group)
 	void assignTrackToGroup(Track* track, const QString& groupId);
+	//! Custom: after dragging a track, join/leave a group depending on where it was dropped
+	void adoptGroupFromPosition(TrackView* tv);
 
 	QString nodeName() const override
 	{

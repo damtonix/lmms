@@ -558,7 +558,6 @@ void MidiClipView::paintEvent( QPaintEvent * )
 	if( !needsUpdate() )
 	{
 		painter.drawPixmap( 0, 0, m_paintPixmap );
-		paintGroupBorder(painter);
 		return;
 	}
 
@@ -768,10 +767,10 @@ void MidiClipView::paintEvent( QPaintEvent * )
 		p.scale(width(), height() - distanceToTop - 2 * notesBorder);
 
 		// set colour based on mute status
-		QColor noteFillColor = muted ? getMutedNoteFillColor().lighter(200)
-									 : (c.lightness() > 175 ? getNoteFillColor().darker(400) : getNoteFillColor());
-		QColor noteBorderColor = muted ? getMutedNoteBorderColor()
-									   : (hasCustomColor() ? c.lighter(200) : getNoteBorderColor());
+		// Custom: dark notes on light clips, light notes on dark (e.g. group colored) clips
+		const QColor contrastNote = c.lightness() > 110 ? QColor(21, 24, 27) : QColor(240, 240, 240);
+		QColor noteFillColor = muted ? getMutedNoteFillColor().lighter(200) : contrastNote;
+		QColor noteBorderColor = muted ? getMutedNoteBorderColor() : contrastNote;
 
 		bool const drawAsLines = height() < 64;
 		if (drawAsLines)
@@ -906,7 +905,6 @@ void MidiClipView::paintEvent( QPaintEvent * )
 	}
 
 	painter.drawPixmap( 0, 0, m_paintPixmap );
-	paintGroupBorder(painter);
 }
 
 

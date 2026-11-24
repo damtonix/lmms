@@ -1237,7 +1237,8 @@ TimePos ClipView::quantizeSplitPos(TimePos midiPos)
 QColor ClipView::getColorForDisplay( QColor defaultColor )
 {
 	// Get the pure Clip color
-	auto clipColor = m_clip->color().value_or(m_clip->getTrack()->color().value_or(defaultColor));
+	// Custom: clips without own/track color take the color of their group
+	auto clipColor = m_clip->color().value_or(m_clip->getTrack()->color().value_or(groupColor().value_or(defaultColor)));
 
 	// Set variables
 	QColor c, mutedCustomColor;
@@ -1274,7 +1275,7 @@ QColor ClipView::getColorForDisplay( QColor defaultColor )
 
 auto ClipView::hasCustomColor() const -> bool
 {
-	return m_clip->color().has_value() || m_clip->getTrack()->color().has_value();
+	return m_clip->color().has_value() || m_clip->getTrack()->color().has_value() || groupColor().has_value();
 }
 
 bool ClipView::splitClip(const TimePos pos)
@@ -1303,24 +1304,15 @@ bool ClipView::splitClip(const TimePos pos)
 	return true;
 }
 
-void ClipView::paintGroupBorder(QPainter& painter)
+std::optional<QColor> ClipView::groupColor() const
 {
-	if (fixedClips()) { return; }
 	// nearest group above the track (automation tracks may sit below an instrument inside a group)
-	const Track* group = nullptr;
 	int guard = 0;
 	for (auto parent = m_trackView->getTrack()->parentTrack(); parent != nullptr && guard < 8; parent = parent->parentTrack(), ++guard)
 	{
-		if (parent->type() == Track::Type::Group) { group = parent; break; }
+		if (parent->type() == Track::Type::Group) { return parent->color(); }
 	}
-	if (group == nullptr || !group->color().has_value()) { return; }
-
-	painter.save();
-	painter.setRenderHint(QPainter::Antialiasing, false);
-	painter.setBrush(Qt::NoBrush);
-	painter.setPen(QPen(group->color().value(), 2));
-	painter.drawRect(QRectF(1, 1, width() - 2, height() - 2));
-	painter.restore();
+	return std::nullopt;
 }
 
 } // namespace lmms::gui

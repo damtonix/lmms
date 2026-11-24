@@ -258,8 +258,8 @@ protected:
 	DataFile createClipDataFiles(const QVector<ClipView *> & clips) const;
 
 	virtual void paintTextLabel(QString const & text, QPainter & painter);
-	//! Custom: thin border in the color of the group the track belongs to
-	void paintGroupBorder(QPainter& painter);
+	//! Custom: color of the group the track belongs to, if any
+	std::optional<QColor> groupColor() const;
 
 	auto hasCustomColor() const -> bool;
 

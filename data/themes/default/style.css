@@ -87,7 +87,7 @@ QLineEdit:read-only {
 /* text box when it wants text */
 
 QLineEdit:focus {
-	border: 1px solid #d4d4d4;
+	border: 1px solid #ffffff;
 }
 
 /* Set color and selection background color for various inputs.
@@ -117,7 +117,7 @@ QSplashScreen QLabel {
 
 
 QMenu {
-	border-top: 2px solid #d4d4d4;
+	border-top: 2px solid #ffffff;
 	background-color: #15191c;
 }
 
@@ -177,8 +177,8 @@ lmms--gui--PositionLine {
 lmms--gui--PianoRoll {
 	background-color: #141616;
 	qproperty-backgroundShade: rgba(255, 255, 255, 10);
-	qproperty-noteModeColor: #d4d4d4;
-	qproperty-noteColor: #d4d4d4;
+	qproperty-noteModeColor: #ffffff;
+	qproperty-noteColor: #ffffff;
 	qproperty-stepNoteColor: #9b1313;
 	qproperty-currentStepNoteColor: rgb(245, 3, 139);
 	qproperty-noteTextColor: #ffffff;
@@ -189,31 +189,31 @@ lmms--gui--PianoRoll {
 	qproperty-ghostNoteTextColor: #ffffff;
 	qproperty-ghostNoteOpacity: 60;
 	qproperty-ghostNoteBorders: false;
-	qproperty-barColor: #d4d4d4;
+	qproperty-barColor: #ffffff;
 	qproperty-markedSemitoneColor: rgba(255, 255, 255, 30);
 	qproperty-knifeCutLine: rgba(255, 0, 0, 255);
 	/* Piano keys */
 	qproperty-whiteKeyWidth: 64;
 	qproperty-whiteKeyActiveTextColor: #000;
 	qproperty-whiteKeyActiveTextShadow: #fff;
-	qproperty-whiteKeyActiveBackground: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #d4d4d4, stop:1 #d4d4d4);
+	qproperty-whiteKeyActiveBackground: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ffffff, stop:1 #ffffff);
 	qproperty-whiteKeyInactiveTextColor: #000;
 	qproperty-whiteKeyInactiveTextShadow: #fff;
 	qproperty-whiteKeyInactiveBackground: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #d6d6d6, stop:1 #e3e3e3);
 	qproperty-whiteKeyDisabledBackground: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #a0a0a0, stop:1 #b0b0b0);
 	qproperty-blackKeyWidth: 48;
-	qproperty-blackKeyActiveBackground: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #d4d4d4, stop:1 #d4d4d4);
+	qproperty-blackKeyActiveBackground: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ffffff, stop:1 #ffffff);
 	qproperty-blackKeyInactiveBackground: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #262626, stop:1 #313131);
 	qproperty-blackKeyDisabledBackground: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #606060, stop:1 #505050);
 
 	/* Grid colors */
 	qproperty-lineColor: #292929;
 	qproperty-beatLineColor: #4a4a4a;
-	qproperty-barLineColor: #d4d4d4;
+	qproperty-barLineColor: #ffffff;
 
 	/* Text on the white piano keys */
 	qproperty-textColor: #000;
-	qproperty-textColorLight: #d4d4d4;
+	qproperty-textColorLight: #ffffff;
 	qproperty-textShadow: #fff;
 }
 
@@ -236,7 +236,7 @@ lmms--gui--GroupBox {
 lmms--gui--Oscilloscope {
 	background: none;
 	border: none;
-	qproperty-leftChannelColor: #d4d4d4;
+	qproperty-leftChannelColor: #ffffff;
 	qproperty-rightChannelColor: rgb(238, 253, 71);
 	qproperty-otherChannelsColor: rgb(71, 235, 253);
 	qproperty-clippingColor: rgb(255, 64, 64);
@@ -402,7 +402,7 @@ QPushButton#btn:hover {
 
 QPushButton#btn:pressed,
 QPushButton#btn:checked {
-	color: #d4d4d4;
+	color: #ffffff;
 	background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(0, 0, 0, 25%), stop:0.1 transparent, stop:0.9 rgba(0, 0, 0, 15%), stop:1 rgba(0, 0, 0, 35%));
 }
 
@@ -411,15 +411,15 @@ QPushButton#btn:checked {
 /* track background config */
 lmms--gui--TrackContentWidget {
 	/* colors */
-	qproperty-darkerColor: #0C0E0F;
-	qproperty-lighterColor: #14151A;
-	qproperty-coarseGridColor: #3C444C;
-	qproperty-fineGridColor: #262B30;
-	qproperty-horizontalColor: #3C444C;
+	qproperty-darkerColor: #111316;
+	qproperty-lighterColor: #131518;
+	qproperty-coarseGridColor: #23272c;
+	qproperty-fineGridColor: #1a1d21;
+	qproperty-horizontalColor: #1c1f23;
 	qproperty-embossColor: rgba(0, 0, 0, 0);
 	
 	/* line widths */
-	qproperty-coarseGridWidth: 2;
+	qproperty-coarseGridWidth: 1;
 	qproperty-fineGridWidth: 1;
 	qproperty-horizontalWidth: 1;
 	qproperty-embossWidth: 0;
@@ -797,7 +797,7 @@ lmms--gui--PeakIndicator {
 
 /* persistent peak markers for fx peak meters */
 lmms--gui--Fader {
-	qproperty-peakOk: #d4d4d4;
+	qproperty-peakOk: #ffffff;
 	qproperty-peakWarn: #d6ec52;
 	qproperty-peakClip: #c12038;
 }
@@ -824,9 +824,9 @@ lmms--gui--TimeLineWidget {
 
 	/* Properties for the loop indicator rectangle in active state.
 	   See above for detailed description. */
-	qproperty-activeLoopColor: #d4d4d4;
-	qproperty-activeLoopBrush: #d4d4d4;
-	qproperty-activeLoopInnerColor: #d4d4d4;
+	qproperty-activeLoopColor: #5c636c;
+	qproperty-activeLoopBrush: #5c636c;
+	qproperty-activeLoopInnerColor: #5c636c;
 	qproperty-activeLoopHandleColor: rgba( 192, 192, 192, 200 );
 
 	/* Vertical padding for the loop indicator rectangle.
@@ -850,7 +850,7 @@ lmms--gui--TrackContainerView QLabel
 lmms--gui--ClipView   {
 	qproperty-mutedColor: rgba(255,255,255,100);
 	qproperty-mutedBackgroundColor: #373d48;
-	qproperty-selectedColor: #7d8fa3;
+	qproperty-selectedColor: #b4c0cd;
 	qproperty-patternClipBackground: #373d48;
 	qproperty-textColor: #fff;
 	qproperty-textBackgroundColor: rgba(0, 0, 0, 100);
@@ -862,30 +862,30 @@ lmms--gui--ClipView   {
 
 /* MIDI (instrument) clip */
 lmms--gui--MidiClipView {
-	background-color: #d4d4d4;
-	color: rgba(30, 30, 30, 220);
+	background-color: #7f868f;
+	color: rgba(21, 24, 27, 220);
 
-	qproperty-noteFillColor: #1e1e1e;
-	qproperty-noteBorderColor: #1e1e1e;
+	qproperty-noteFillColor: #15181b;
+	qproperty-noteBorderColor: #15181b;
 	qproperty-mutedNoteFillColor: rgba(100, 100, 100, 220);
 	qproperty-mutedNoteBorderColor: rgb(55, 61, 72);
 }
 
 /* sample track clip */
 lmms--gui--SampleClipView {
-	background-color: #d4d4d4;
-	color: #1e1e1e;
+	background-color: #7f868f;
+	color: #15181b;
 }
 
 /* automation clip */
 lmms--gui--AutomationClipView {
-	background-color: #1e1e1e;
-	color: rgba(212, 212, 212, 230);
+	background-color: #2c3036;
+	color: rgba(255, 255, 255, 230);
 }
 
 /* pattern clip */
 lmms--gui--PatternClipView {
-	background-color: #d4d4d4; /* default colour for pattern tracks */
+	background-color: #7f868f; /* default colour for pattern tracks */
 	qproperty-emptyTrackHeightRatio: 0.5; /* height of empty tracks versus non-empty tracks */
 	qproperty-verticalPadding: 0.15; /* padding above and below the beat preview on the clip, fraction of the total clip height */
 	qproperty-noteVerticalSpacing: 0.2; /* spacing above and below each note, fraction of the note height */
@@ -929,7 +929,7 @@ lmms--gui--SubWindow > QPushButton:hover{
 /* Envelope graph */
 lmms--gui--EnvelopeGraph {
 	qproperty-noAmountColor: rgb(96, 91, 96);
-	qproperty-fullAmountColor: #d4d4d4;
+	qproperty-fullAmountColor: #ffffff;
 	qproperty-markerFillColor: rgb(153, 175, 255);
 	qproperty-markerOutlineColor: rgb(0, 0, 0);
 }
@@ -937,7 +937,7 @@ lmms--gui--EnvelopeGraph {
 /* LFO graph */
 lmms--gui--LfoGraph {
 	qproperty-noAmountColor: rgb(96, 91, 96);
-	qproperty-fullAmountColor: #d4d4d4;
+	qproperty-fullAmountColor: #ffffff;
 }
 
 /* Plugins */
@@ -986,7 +986,7 @@ lmms--gui--AudioFileProcessorView lmms--gui--Knob {
 }
 
 lmms--gui--OrganicInstrumentView lmms--gui--Knob {
-	color: #d4d4d4;
+	color: #ffffff;
 	qproperty-outerColor: rgb(13, 42, 4);
 	qproperty-innerRadius: 2;
 	qproperty-outerRadius: 7.5;
@@ -1036,7 +1036,7 @@ lmms--gui--SfxrInstrumentView lmms--gui--Knob#envKnob {
 
 lmms--gui--SfxrInstrumentView lmms--gui--Knob#freqKnob {
 	color:	#3a3a3a;
-	qproperty-outerColor: #d4d4d4;
+	qproperty-outerColor: #ffffff;
 }
 
 lmms--gui--SfxrInstrumentView lmms--gui--Knob#changeKnob {
@@ -1107,16 +1107,16 @@ lmms--gui--WatsynView lmms--gui--Knob#bKnob {
 }
 
 lmms--gui--WatsynView lmms--gui--Knob#mixKnob {
-	color: #d4d4d4;
-	qproperty-outerColor: #d4d4d4;
+	color: #ffffff;
+	qproperty-outerColor: #ffffff;
 	qproperty-outerRadius: 13;
 	qproperty-centerPointX: 15.5;
 	qproperty-centerPointY: 15.5;
 }
 
 lmms--gui--WatsynView lmms--gui--Knob#mixenvKnob {
-	color: #d4d4d4;
-	qproperty-outerColor: #d4d4d4;
+	color: #ffffff;
+	qproperty-outerColor: #ffffff;
 }
 
 lmms--gui--WatsynView lmms--gui--Knob#xtalkKnob {
@@ -1150,9 +1150,9 @@ lmms--gui--CompressorControlDialog {
 	qproperty-outVolAreaColor: rgba(209, 216, 228, 30);
 	qproperty-outVolColor: rgba(209, 216, 228, 240);
 	qproperty-gainReductionColor: rgba(180, 100, 100, 210);
-	qproperty-kneeColor: rgba(212, 212, 212, 255);
+	qproperty-kneeColor: rgba(255, 255, 255, 255);
 	qproperty-kneeColor2: rgba(170, 170, 170, 255);
-	qproperty-threshColor: rgba(212, 212, 212, 100);
+	qproperty-threshColor: rgba(255, 255, 255, 100);
 	qproperty-textColor: rgba(209, 216, 228, 50);
 	qproperty-graphColor: rgba(209, 216, 228, 50);
 	qproperty-resetColor: rgba(200, 100, 15, 200);
@@ -1160,8 +1160,8 @@ lmms--gui--CompressorControlDialog {
 }
 
 lmms--gui--CompressorControlDialog lmms--gui--Knob {
-	color: #d4d4d4;
-	qproperty-outerColor: #d4d4d4;
+	color: #ffffff;
+	qproperty-outerColor: #ffffff;
 	qproperty-lineWidth: 2;
 }
 
@@ -1186,7 +1186,7 @@ lmms--gui--FrequencyShifterControlDialog lmms--gui--Knob#fs_phase {
 }
 
 lmms--gui--VectorView {
-	qproperty-colorTrace: rgba(212, 212, 212, 255);
+	qproperty-colorTrace: rgba(255, 255, 255, 255);
 	qproperty-colorGrid: rgba(76, 80, 84, 128);
 	qproperty-colorLabels: rgba(76, 80, 84, 255);
 }
@@ -1200,7 +1200,7 @@ lmms--gui--BarModelEditor {
 
 lmms--gui--LmmsPalette {
 	qproperty-background: #262b30;
-	qproperty-windowText: #d4d4d4;
+	qproperty-windowText: #ffffff;
 	qproperty-base: #101213;
 	qproperty-text: #d1d8e4;
 	qproperty-button: #3f4750;

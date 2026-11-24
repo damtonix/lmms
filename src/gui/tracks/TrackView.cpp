@@ -46,6 +46,12 @@
 #include "StringPairDrag.h"
 #include "Track.h"
 #include "TrackGrip.h"
+#include "PatternEditor.h"
+#include "SongEditor.h"
+#include "GuiApplication.h"
+#include "Mixer.h"
+#include "SampleTrack.h"
+#include "InstrumentTrack.h"
 #include "SampleThumbnailRenderer.h"
 #include "SampleClip.h"
 #include "TrackLabelButton.h"
@@ -471,7 +477,7 @@ void TrackView::applyGroupIndent()
 
 namespace
 {
-//! Custom: drawn over the clips – frozen tracks show their rendered audio, muted tracks are struck through
+//! Custom: drawn over the clips of frozen tracks, shows their rendered audio
 class TrackStateOverlay : public QWidget
 {
 public:
@@ -517,12 +523,6 @@ protected:
 			p.drawText(rect().adjusted(6, 2, -6, -2), Qt::AlignLeft | Qt::AlignTop, TrackView::tr("EINGEFROREN"));
 		}
 
-		if (track->isMuted())
-		{
-			p.fillRect(rect(), QColor(0, 0, 0, 110));
-			p.setPen(QPen(QColor(212, 212, 212, 190), 2));
-			p.drawLine(0, height() / 2, width(), height() / 2);
-		}
 	}
 
 private:
@@ -533,33 +533,60 @@ private:
 
 
 
+int TrackView::s_highlightedMixerChannel = -1;
+
+void TrackView::setMixerHighlight(int channel)
+{
+	s_highlightedMixerChannel = channel > 0 ? channel : -1;
+	// the mixer may select a channel while the editors are still being created
+	if (getGUI() == nullptr || getGUI()->songEditor() == nullptr || getGUI()->patternEditor() == nullptr) { return; }
+	for (auto editor : {static_cast<TrackContainerView*>(getGUI()->songEditor()->m_editor),
+		static_cast<TrackContainerView*>(getGUI()->patternEditor()->m_editor)})
+	{
+		for (auto tv : editor->trackViews()) { tv->updateFrozenState(); }
+	}
+}
+
+
+
+
 void TrackView::updateFrozenState()
 {
 	const bool frozen = m_track->isFrozen();
-	const bool muted = m_track->isMuted();
+
+	// mixer channel of instrument / sample tracks (for the mixer highlight)
+	IntModel* mixerChannel = nullptr;
+	if (auto it = dynamic_cast<InstrumentTrack*>(m_track)) { mixerChannel = it->mixerChannelModel(); }
+	else if (auto st = dynamic_cast<SampleTrack*>(m_track)) { mixerChannel = st->mixerChannelModel(); }
+	if (mixerChannel && !m_mixerChannelConnected)
+	{
+		connect(mixerChannel, &IntModel::dataChanged, this, &TrackView::updateFrozenState);
+		m_mixerChannelConnected = true;
+	}
+	const bool highlighted = mixerChannel && s_highlightedMixerChannel > 0
+		&& mixerChannel->value() == s_highlightedMixerChannel;
 
 	// no clip editing while frozen
 	m_trackContentWidget.setEnabled(!frozen);
 
 	// the whole track row is tinted when frozen
 	QPalette pal = palette();
+	if (highlighted)
+	{
+		// channel color from the mixer if set, otherwise amber
+		QColor color(150, 120, 40);
+		if (auto channel = Engine::mixer()->mixerChannel(s_highlightedMixerChannel); channel && channel->color().has_value())
+		{
+			color = channel->color().value().darker(160);
+		}
+		pal.setColor(QPalette::Window, color);
+	}
 	if (frozen) { pal.setColor(QPalette::Window, QColor(44, 74, 110)); }
 	if (m_track->type() != Track::Type::Group) { m_trackSettingsWidget.setPalette(pal); }
 	m_trackOperationsWidget.setPalette(pal);
 	m_trackOperationsWidget.update();
 
-	// muted tracks: struck-through name
-	if (auto label = m_trackSettingsWidget.findChild<TrackLabelButton*>(QString(), Qt::FindDirectChildrenOnly))
-	{
-		QFont f = label->font();
-		if (f.strikeOut() != muted)
-		{
-			f.setStrikeOut(muted);
-			label->setFont(f);
-		}
-	}
-
-	if (frozen || muted)
+	if (frozen)
 	{
 		if (m_frozenOverlay == nullptr)
 		{
@@ -593,11 +620,18 @@ void TrackView::groupStateChanged()
 void TrackView::onTrackGripGrabbed()
 {
 	m_action = Action::Move;
+	m_dragStartIndex = m_trackContainerView->trackViews().indexOf(this);
 }
 
 void TrackView::onTrackGripReleased()
 {
 	m_action = Action::None;
+	// Custom: dropping a track inside/outside a group block joins/leaves that group
+	// (only if it was actually moved, a plain click on the grip changes nothing)
+	if (m_trackContainerView->trackViews().indexOf(this) != m_dragStartIndex)
+	{
+		m_trackContainerView->adoptGroupFromPosition(this);
+	}
 	// Custom: keep group members directly below their group
 	m_trackContainerView->regroupTrackViews();
 }

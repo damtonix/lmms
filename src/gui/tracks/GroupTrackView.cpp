@@ -11,6 +11,8 @@
 
 #include "GroupTrackView.h"
 
+#include <algorithm>
+
 #include <QTimer>
 #include <QToolButton>
 
@@ -19,6 +21,8 @@
 #include "embed.h"
 #include "GroupTrack.h"
 #include "TrackContainerView.h"
+#include "TrackContainer.h"
+#include "StringPairDrag.h"
 #include "TrackLabelButton.h"
 
 namespace lmms::gui
@@ -78,6 +82,40 @@ GroupTrackView::GroupTrackView(GroupTrack* gt, TrackContainerView* tcv) :
 GroupTrack* GroupTrackView::groupTrack()
 {
 	return static_cast<GroupTrack*>(getTrack());
+}
+
+
+
+
+void GroupTrackView::dragEnterEvent(QDragEnterEvent* dee)
+{
+	StringPairDrag::processDragEnterEvent(dee,
+		QString("presetfile,pluginpresetfile,samplefile,instrument,soundfontfile,patchfile,vstpluginfile,track_%1,track_%2")
+			.arg(static_cast<int>(Track::Type::Instrument))
+			.arg(static_cast<int>(Track::Type::Sample)));
+}
+
+
+
+
+void GroupTrackView::dropEvent(QDropEvent* de)
+{
+	auto tcv = trackContainerView();
+	const auto tracksBefore = tcv->model()->tracks();
+
+	// let the editor create the track as usual ...
+	tcv->dropEvent(de);
+
+	// ... and put every new track into this group
+	const auto tracksAfter = tcv->model()->tracks();
+	for (const auto& track : tracksAfter)
+	{
+		if (track->type() == Track::Type::Group) { continue; }
+		if (std::find(tracksBefore.begin(), tracksBefore.end(), track) != tracksBefore.end()) { continue; }
+		tcv->createTrackView(track);
+		groupTrack()->setCollapsed(false);
+		tcv->assignTrackToGroup(track, groupTrack()->uid());
+	}
 }
 
 

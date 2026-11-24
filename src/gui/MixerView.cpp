@@ -23,6 +23,7 @@
  */
 
 #include "MixerView.h"
+#include "TrackView.h"
 
 #include <QHBoxLayout>
 #include <QLayout>
@@ -327,6 +328,8 @@ void MixerView::setCurrentMixerChannel(MixerChannelView* channel)
 {
 	// select
 	m_currentMixerChannel = channel;
+	// Custom: highlight the tracks routed to this channel in the editors
+	TrackView::setMixerHighlight(channel->channelIndex());
 	m_racksLayout->setCurrentWidget(m_mixerChannelViews[channel->channelIndex()]->m_effectRackView);
 
 	// set up send knob
