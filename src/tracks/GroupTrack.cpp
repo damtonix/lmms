@@ -23,9 +23,9 @@ namespace lmms
 {
 
 GroupTrack::GroupTrack(TrackContainer* tc) :
-	Track(Type::Group, tc),
-	m_uid(QUuid::createUuid().toString(QUuid::WithoutBraces))
+	Track(Type::Group, tc)
 {
+	uid(); // groups always have an id
 	setName(tr("Gruppe"));
 }
 
@@ -61,10 +61,9 @@ Clip* GroupTrack::createClip(const TimePos&)
 
 
 
-void GroupTrack::saveTrackSpecificSettings(QDomDocument&, QDomElement& element, bool)
+void GroupTrack::saveTrackSpecificSettings(QDomDocument&, QDomElement&, bool)
 {
-	element.setAttribute("uid", m_uid);
-	element.setAttribute("collapsed", m_collapsed ? 1 : 0);
+	// uid and collapsed state are saved by Track
 }
 
 
@@ -72,30 +71,21 @@ void GroupTrack::saveTrackSpecificSettings(QDomDocument&, QDomElement& element, 
 
 void GroupTrack::loadTrackSpecificSettings(const QDomElement& element)
 {
-	const QString uid = element.attribute("uid");
-	if (!uid.isEmpty()) { m_uid = uid; }
-
-	// A cloned group must not share the id of the original
-	for (const auto& track : trackContainer()->tracks())
+	// projects saved by the first group version stored these here
+	if (element.hasAttribute("collapsed")) { setCollapsed(element.attribute("collapsed").toInt() != 0); }
+	if (element.hasAttribute("uid") && !element.parentNode().toElement().hasAttribute("uid"))
 	{
-		if (track != this && track->type() == Type::Group && static_cast<GroupTrack*>(track)->uid() == m_uid)
+		const QString oldUid = element.attribute("uid");
+		bool duplicate = false;
+		for (const auto& track : trackContainer()->tracks())
 		{
-			regenerateUid();
-			break;
+			if (track != this && track->type() == Type::Group && static_cast<GroupTrack*>(track)->uid() == oldUid)
+			{
+				duplicate = true;
+			}
 		}
+		if (!duplicate) { setUidForLoading(oldUid); }
 	}
-
-	setCollapsed(element.attribute("collapsed", "0").toInt() != 0);
-}
-
-
-
-
-void GroupTrack::setCollapsed(bool collapsed)
-{
-	if (m_collapsed == collapsed) { return; }
-	m_collapsed = collapsed;
-	emit collapsedChanged();
 }
 
 
@@ -106,17 +96,9 @@ std::vector<Track*> GroupTrack::members() const
 	std::vector<Track*> result;
 	for (const auto& track : trackContainer()->tracks())
 	{
-		if (track != this && track->groupId() == m_uid) { result.push_back(track); }
+		if (track != this && track->groupId() == uid()) { result.push_back(track); }
 	}
 	return result;
-}
-
-
-
-
-void GroupTrack::regenerateUid()
-{
-	m_uid = QUuid::createUuid().toString(QUuid::WithoutBraces);
 }
 
 

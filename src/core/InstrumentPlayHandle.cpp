@@ -28,6 +28,7 @@
 #include "InstrumentTrack.h"
 #include "Engine.h"
 #include "AudioEngine.h"
+#include "SampleFrame.h"
 
 namespace lmms
 {
@@ -43,6 +44,13 @@ InstrumentPlayHandle::InstrumentPlayHandle(Instrument * instrument, InstrumentTr
 void InstrumentPlayHandle::play(SampleFrame* working_buffer)
 {
 	InstrumentTrack * instrumentTrack = m_instrument->instrumentTrack();
+
+	// Custom: a frozen track does not run its instrument at all (saves the CPU of e.g. VSTs)
+	if (instrumentTrack->isFrozen())
+	{
+		zeroSampleFrames(working_buffer, Engine::audioEngine()->framesPerPeriod());
+		return;
+	}
 
 	// ensure that all our nph's have been processed first
 	auto nphv = NotePlayHandle::nphsOfInstrumentTrack(instrumentTrack, true);

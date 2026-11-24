@@ -33,6 +33,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QProgressDialog>
+#include <QRegularExpression>
 #include <QShortcut>
 #include <QSplitter>
 
@@ -70,6 +71,11 @@
 #include "SetupDialog.h"
 #include "SideBar.h"
 #include "SongEditor.h"
+#include "TrackContainerView.h"
+#include "TrackView.h"
+#include "GroupTrack.h"
+#include "SampleTrack.h"
+#include "SampleClip.h"
 #include "SubWindow.h"
 #include "TemplatesMenu.h"
 #include "TextFloat.h"
@@ -124,10 +130,11 @@ MainWindow::MainWindow() :
 		tr("My Projects"), embed::getIconPixmap("project_file").transformed(QTransform().rotate(90)), splitter, false,
 		confMgr->userProjectsDir(), confMgr->factoryProjectsDir()));
 
-	sideBar->appendTab(new FileBrowser(FileBrowser::Type::Normal,
-		confMgr->userSamplesDir() + "*" + confMgr->factorySamplesDir(), FileItem::defaultFilters(), tr("My Samples"),
+	m_samplesBrowser = new FileBrowser(FileBrowser::Type::Normal,
+		samplesBrowserDirectories(), FileItem::defaultFilters(), tr("My Samples"),
 		embed::getIconPixmap("sample_file").transformed(QTransform().rotate(90)), splitter, false,
-		confMgr->userSamplesDir(), confMgr->factorySamplesDir()));
+		confMgr->userSamplesDir(), confMgr->factorySamplesDir());
+	sideBar->appendTab(m_samplesBrowser);
 
 	sideBar->appendTab(new FileBrowser(FileBrowser::Type::Normal,
 		confMgr->userPresetsDir() + "*" + confMgr->factoryPresetsDir(), "*.xpf *.cs.xml *.xiz *.lv2", tr("My Presets"),
@@ -316,7 +323,7 @@ void MainWindow::finalize()
 	addAction(project_menu, "project_export", tr("E&xport..."),
 		keySequence(Qt::CTRL, Qt::Key_E), &MainWindow::onExportProject);
 
-	addAction(project_menu, "loop_points_on", tr("Schnell-Export (Loop als WAV)..."),
+	addAction(project_menu, "quick_export", tr("Schnell-Export (Loop als WAV)..."),
 		keySequence(Qt::CTRL, Qt::ALT, Qt::Key_E), &MainWindow::onQuickExport);
 
 	addAction(project_menu, "project_export", tr("Export &Tracks..."),
@@ -418,7 +425,7 @@ void MainWindow::finalize()
 	auto project_export = new ToolButton(
 		embed::getIconPixmap("project_export"), tr("Export current project"), this, SLOT(onExportProject()), m_toolBar);
 
-	auto quick_export = new ToolButton(embed::getIconPixmap("loop_points_on"),
+	auto quick_export = new ToolButton(embed::getIconPixmap("quick_export"),
 		tr("Schnell-Export: Loop als WAV rendern und als AudioFileProcessor-Spur laden") + " (Ctrl+Alt+E)",
 		this, SLOT(onQuickExport()), m_toolBar);
 
@@ -1612,74 +1619,12 @@ void MainWindow::onQuickExport()
 	}
 
 	// Ask only for the file name and location
-	FileDialog efd(this);
-	efd.setFileMode(FileDialog::AnyFile);
-	efd.setAcceptMode(FileDialog::AcceptSave);
-	efd.setNameFilters({tr("WAV-Datei (*.wav)")});
-	efd.setDefaultSuffix("wav");
-	efd.setWindowTitle(tr("Schnell-Export: Datei w\xc3\xa4hlen..."));
-	QString dir = ConfigManager::inst()->value("app", "quickexportdir");
-	QString baseName = tr("Loop");
 	const QString& projectFileName = song->projectFileName();
-	if (!projectFileName.isEmpty())
-	{
-		baseName = QFileInfo(projectFileName).completeBaseName() + "-loop";
-		if (dir.isEmpty()) { dir = QFileInfo(projectFileName).absolutePath(); }
-	}
-	if (dir.isEmpty() || !QFileInfo(dir).isDir()) { dir = ConfigManager::inst()->userSamplesDir(); }
-	efd.setDirectory(dir);
-	efd.selectFile(baseName + ".wav");
+	const QString baseName = projectFileName.isEmpty() ? tr("Loop") : QFileInfo(projectFileName).completeBaseName() + "-loop";
+	const QString path = askWavFile(tr("Schnell-Export: Datei w\xc3\xa4hlen..."), baseName);
+	if (path.isEmpty()) { return; }
 
-	if (efd.exec() != QDialog::Accepted || efd.selectedFiles().isEmpty() || efd.selectedFiles()[0].isEmpty())
-	{
-		return;
-	}
-	QString path = efd.selectedFiles()[0];
-	if (!path.endsWith(".wav", Qt::CaseInsensitive)) { path += ".wav"; }
-	ConfigManager::inst()->setValue("app", "quickexportdir", QFileInfo(path).absolutePath());
-
-	// Render between the loop markers with sensible defaults (project sample rate, 24 bit, stereo)
-	const auto outputSettings = OutputSettings{Engine::audioEngine()->outputSampleRate(), 160,
-		OutputSettings::BitDepth::Depth24Bit, OutputSettings::StereoMode::Stereo};
-	auto renderManager = std::make_unique<RenderManager>(outputSettings, ProjectRenderer::ExportFileFormat::Wave, path);
-
-	song->setExportLoop(false);
-	song->setRenderBetweenMarkers(true);
-	song->setLoopRenderCount(1);
-
-	QProgressDialog progress(tr("Schnell-Export l\xc3\xa4uft..."), tr("Abbrechen"), 0, 100, this);
-	progress.setWindowTitle(tr("Schnell-Export"));
-	progress.setWindowModality(Qt::WindowModal);
-	progress.setMinimumDuration(0);
-	progress.setAutoClose(false);
-	progress.setAutoReset(false);
-
-	bool finished = false;
-	connect(renderManager.get(), &RenderManager::progressChanged, &progress, &QProgressDialog::setValue);
-	connect(renderManager.get(), &RenderManager::finished, &progress, [&finished, &progress] {
-		finished = true;
-		progress.accept();
-	});
-
-	renderManager->renderProject();
-	if (!finished) { progress.exec(); }
-
-	if (!finished)
-	{
-		renderManager->abortProcessing();
-		renderManager.reset();
-		song->setRenderBetweenMarkers(false);
-		QFile::remove(path);
-		return;
-	}
-	renderManager.reset();
-	song->setRenderBetweenMarkers(false);
-
-	if (!QFileInfo::exists(path))
-	{
-		QMessageBox::warning(this, tr("Schnell-Export"), tr("Die Datei %1 konnte nicht geschrieben werden.").arg(path));
-		return;
-	}
+	if (!renderToWav(path, true, tr("Schnell-Export"))) { return; }
 
 	// Load the result into a new AudioFileProcessor track
 	auto track = dynamic_cast<InstrumentTrack*>(Track::create(Track::Type::Instrument, song));
@@ -1697,6 +1642,167 @@ void MainWindow::onQuickExport()
 		tr("%1 wurde exportiert und als neue Spur geladen.").arg(QFileInfo(path).fileName()),
 		embed::getIconPixmap("project_export", 24, 24), 3000);
 }
+QString MainWindow::samplesBrowserDirectories()
+{
+	auto confMgr = ConfigManager::inst();
+	QString dirs = confMgr->userSamplesDir() + "*" + confMgr->factorySamplesDir();
+	// Custom: own sample folder from the settings
+	const QString custom = confMgr->value("paths", "customsamplesdir");
+	if (!custom.isEmpty() && QFileInfo(custom).isDir())
+	{
+		dirs = QDir::cleanPath(custom) + "/*" + dirs;
+	}
+	return dirs;
+}
+
+void MainWindow::refreshSamplesBrowser()
+{
+	if (m_samplesBrowser) { m_samplesBrowser->setDirectories(samplesBrowserDirectories()); }
+}
+
+bool MainWindow::renderToWav(const QString& path, bool betweenLoopMarkers, const QString& title)
+{
+	Song* song = Engine::getSong();
+	// project sample rate, 24 bit, stereo
+	const auto outputSettings = OutputSettings{Engine::audioEngine()->outputSampleRate(), 160,
+		OutputSettings::BitDepth::Depth24Bit, OutputSettings::StereoMode::Stereo};
+	auto renderManager = std::make_unique<RenderManager>(outputSettings, ProjectRenderer::ExportFileFormat::Wave, path);
+
+	song->setExportLoop(false);
+	song->setRenderBetweenMarkers(betweenLoopMarkers);
+	song->setLoopRenderCount(1);
+
+	QProgressDialog progress(tr("%1 l\xc3\xa4uft...").arg(title), tr("Abbrechen"), 0, 100, this);
+	progress.setWindowTitle(title);
+	progress.setWindowModality(Qt::WindowModal);
+	progress.setMinimumDuration(0);
+	progress.setAutoClose(false);
+	progress.setAutoReset(false);
+
+	bool finished = false;
+	connect(renderManager.get(), &RenderManager::progressChanged, &progress, &QProgressDialog::setValue);
+	connect(renderManager.get(), &RenderManager::finished, &progress, [&finished, &progress] {
+		finished = true;
+		progress.accept();
+	});
+
+	renderManager->renderProject();
+	if (!finished) { progress.exec(); }
+
+	if (!finished) { renderManager->abortProcessing(); }
+	renderManager.reset();
+	song->setRenderBetweenMarkers(false);
+
+	if (!finished)
+	{
+		QFile::remove(path);
+		return false;
+	}
+	if (!QFileInfo::exists(path))
+	{
+		QMessageBox::warning(this, title, tr("Die Datei %1 konnte nicht geschrieben werden.").arg(path));
+		return false;
+	}
+	return true;
+}
+
+QString MainWindow::askWavFile(const QString& title, const QString& baseName)
+{
+	FileDialog efd(this);
+	efd.setFileMode(FileDialog::AnyFile);
+	efd.setAcceptMode(FileDialog::AcceptSave);
+	efd.setNameFilters({tr("WAV-Datei (*.wav)")});
+	efd.setDefaultSuffix("wav");
+	efd.setWindowTitle(title);
+	QString dir = ConfigManager::inst()->value("app", "quickexportdir");
+	const QString& projectFileName = Engine::getSong()->projectFileName();
+	if (dir.isEmpty() && !projectFileName.isEmpty()) { dir = QFileInfo(projectFileName).absolutePath(); }
+	if (dir.isEmpty() || !QFileInfo(dir).isDir()) { dir = ConfigManager::inst()->userSamplesDir(); }
+	efd.setDirectory(dir);
+	QString safeName = baseName;
+	safeName.replace(QRegularExpression(FILENAME_FILTER), "_");
+	efd.selectFile(safeName + ".wav");
+
+	if (efd.exec() != QDialog::Accepted || efd.selectedFiles().isEmpty() || efd.selectedFiles()[0].isEmpty())
+	{
+		return QString();
+	}
+	QString path = efd.selectedFiles()[0];
+	if (!path.endsWith(".wav", Qt::CaseInsensitive)) { path += ".wav"; }
+	ConfigManager::inst()->setValue("app", "quickexportdir", QFileInfo(path).absolutePath());
+	return path;
+}
+
+void MainWindow::bounceTrack(Track* track)
+{
+	Song* song = Engine::getSong();
+	if (track == nullptr || track->trackContainer() != song) { return; }
+
+	const QString path = askWavFile(tr("Bounce: Datei w\xc3\xa4hlen..."), track->name() + "-bounce");
+	if (path.isEmpty()) { return; }
+
+	// Render only this track: mute every other audio track (automation keeps running),
+	// keep the parent group(s) audible and temporarily unfreeze the track
+	const bool journalling = Engine::projectJournal()->isJournalling();
+	Engine::projectJournal()->setJournalling(false);
+	std::vector<std::pair<Track*, bool>> savedMutes;
+	std::vector<Track*> ancestors;
+	for (auto parent = track->parentTrack(); parent != nullptr && ancestors.size() < 8; parent = parent->parentTrack())
+	{
+		ancestors.push_back(parent);
+	}
+	for (auto other : song->tracks())
+	{
+		const auto type = other->type();
+		if (type == Track::Type::Automation || type == Track::Type::HiddenAutomation) { continue; }
+		savedMutes.emplace_back(other, other->isMutedSelf());
+		const bool audible = other == track || std::find(ancestors.begin(), ancestors.end(), other) != ancestors.end();
+		other->setMuted(!audible);
+	}
+	const bool wasFrozen = track->isFrozen();
+	track->setFrozen(false);
+
+	const bool ok = renderToWav(path, false, tr("Bounce"));
+
+	track->setFrozen(wasFrozen);
+	for (const auto& [other, muted] : savedMutes) { other->setMuted(muted); }
+	Engine::projectJournal()->setJournalling(journalling);
+	if (!ok) { return; }
+
+	// New sample track with the bounced file directly below the track (and its children)
+	auto sampleTrack = dynamic_cast<SampleTrack*>(Track::create(Track::Type::Sample, song));
+	if (sampleTrack == nullptr) { return; }
+	sampleTrack->setName(track->name() + " (Bounce)");
+	if (auto clip = dynamic_cast<SampleClip*>(sampleTrack->createClip(TimePos(0))))
+	{
+		clip->setSampleFile(path);
+	}
+
+	auto editor = getGUI()->songEditor()->m_editor;
+	TrackView* newView = editor->createTrackView(sampleTrack);
+	const auto& views = editor->trackViews();
+	int targetIndex = -1;
+	for (int i = 0; i < views.size(); ++i)
+	{
+		auto t = views[i]->getTrack();
+		bool inSubtree = t == track;
+		for (auto p = t->parentTrack(); !inSubtree && p != nullptr; p = p->parentTrack()) { inSubtree = p == track; }
+		if (inSubtree) { targetIndex = i + 1; }
+	}
+	if (targetIndex >= 0)
+	{
+		for (int j = views.indexOf(newView); j > targetIndex; --j) { editor->moveTrackView(newView, j - 1); }
+	}
+	// stay in the same group as the source track
+	if (const auto group = track->group()) { sampleTrack->setGroupId(group->uid()); }
+	editor->realignTracks();
+	song->setModified();
+
+	TextFloat::displayMessage(tr("Bounce fertig"),
+		tr("%1 wurde als neue Sample-Spur eingef\xc3\xbcgt.").arg(QFileInfo(path).fileName()),
+		embed::getIconPixmap("sample_track", 24, 24), 3000);
+}
+
 
 void MainWindow::onImportProject()
 {

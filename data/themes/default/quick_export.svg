@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <!-- waveform -->
+  <path d="M1.5 14 H4 L5.5 9 L7.5 19 L9.5 6 L11.5 17 L13 12 H15" fill="none" stroke="#d1d8e4" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- lightning bolt -->
+  <path d="M17.5 1.5 L12.8 11.2 H16.6 L14.6 22.5 L22 9.8 H18 L20.6 1.5 Z" fill="#ffbf2e" stroke="#7a4f00" stroke-width="0.8" stroke-linejoin="round"/>
+</svg>

@@ -25,6 +25,8 @@
 #include "TrackContainerView.h"
 
 
+#include <functional>
+
 #include <QLayout>
 #include <QScrollBar>
 #include <QWheelEvent>
@@ -259,9 +261,8 @@ void TrackContainerView::realignTracks()
 {
 	for (const auto& trackView : m_trackViews)
 	{
-		// Custom: hide members of collapsed groups
-		const auto group = trackView->getTrack()->group();
-		trackView->setVisible(group == nullptr || !group->isCollapsed());
+		// Custom: hide children of collapsed tracks (groups, instruments with automation tracks)
+		trackView->setVisible(!trackView->getTrack()->isHiddenByCollapse());
 		trackView->applyGroupIndent();
 		trackView->update();
 	}
@@ -294,11 +295,8 @@ void TrackContainerView::deleteTrackView( TrackView * _tv )
 
 	Track * t = _tv->getTrack();
 
-	// Custom: deleting a group releases its members
-	if (t->type() == Track::Type::Group)
-	{
-		for (auto member : static_cast<GroupTrack*>(t)->members()) { member->setGroupId(QString()); }
-	}
+	// Custom: deleting a parent (group / instrument) releases its children
+	for (auto child : t->childTracks()) { child->setGroupId(QString()); }
 
 	removeTrackView( _tv );
 	delete _tv;
@@ -364,19 +362,19 @@ void TrackContainerView::setPixelsPerBar( int ppb )
 
 void TrackContainerView::regroupTrackViews()
 {
-	// Build the target order: each group immediately followed by its members (keeping their relative order)
+	// Build the target order: every track immediately followed by its children (recursively),
+	// keeping the relative order of siblings
 	QList<TrackView*> target;
+	std::function<void(TrackView*)> place = [&](TrackView* tv) {
+		target.append(tv);
+		for (auto child : m_trackViews)
+		{
+			if (!target.contains(child) && child->getTrack()->parentTrack() == tv->getTrack()) { place(child); }
+		}
+	};
 	for (auto tv : m_trackViews)
 	{
-		if (tv->getTrack()->group() != nullptr) { continue; } // placed together with its group
-		target.append(tv);
-		if (tv->getTrack()->type() == Track::Type::Group)
-		{
-			for (auto member : m_trackViews)
-			{
-				if (member->getTrack()->group() == tv->getTrack()) { target.append(member); }
-			}
-		}
+		if (tv->getTrack()->parentTrack() == nullptr) { place(tv); }
 	}
 	if (target.size() != m_trackViews.size() || target == m_trackViews) { return; }
 
@@ -404,7 +402,10 @@ void TrackContainerView::createGroupForTrack(TrackView* tv)
 		moveTrackView(groupView, j - 1);
 	}
 	if (tv->getTrack()->color().has_value()) { group->setColor(tv->getTrack()->color()); }
-	assignTrackToGroup(tv->getTrack(), group->uid());
+	tv->getTrack()->addJournalCheckPoint();
+	tv->getTrack()->setGroupId(group->uid());
+	regroupTrackViews();
+	realignTracks();
 }
 
 
@@ -413,6 +414,16 @@ void TrackContainerView::createGroupForTrack(TrackView* tv)
 void TrackContainerView::assignTrackToGroup(Track* track, const QString& groupId)
 {
 	track->addJournalCheckPoint();
+	// new children are appended at the bottom: move the track to the end first, then regroup
+	if (!groupId.isEmpty() && groupId != track->groupId())
+	{
+		for (auto tv : m_trackViews)
+		{
+			if (tv->getTrack() != track) { continue; }
+			for (int j = m_trackViews.indexOf(tv); j < m_trackViews.size() - 1; ++j) { moveTrackView(tv, j + 1); }
+			break;
+		}
+	}
 	track->setGroupId(groupId);
 	regroupTrackViews();
 	realignTracks();

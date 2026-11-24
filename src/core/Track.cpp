@@ -30,6 +30,7 @@
 #include "Track.h"
 
 #include <QDomElement>
+#include <QUuid>
 #include <QVariant>
 
 #include <algorithm>
@@ -173,9 +174,12 @@ void Track::saveTrack(QDomDocument& doc, QDomElement& element, bool presetMode)
 		element.setAttribute("color", m_color->name());
 	}
 
-	if (!presetMode && !m_groupId.isEmpty() && group() != nullptr)
+	if (!presetMode)
 	{
-		element.setAttribute("group", m_groupId);
+		if (!m_groupId.isEmpty() && parentTrack() != nullptr) { element.setAttribute("group", m_groupId); }
+		if (!m_uid.isEmpty()) { element.setAttribute("uid", m_uid); }
+		if (m_collapsed) { element.setAttribute("collapsed", 1); }
+		if (m_frozen) { element.setAttribute("frozen", 1); }
 	}
 	
 	QDomElement tsDe = doc.createElement( nodeName() );
@@ -220,7 +224,18 @@ void Track::loadTrack(const QDomElement& element, bool presetMode)
 
 	if (!presetMode)
 	{
+		if (element.hasAttribute("uid"))
+		{
+			m_uid = element.attribute("uid");
+			// a cloned track must not share the id of the original
+			for (const auto& track : m_trackContainer->tracks())
+			{
+				if (track != this && track->m_uid == m_uid) { regenerateUid(); break; }
+			}
+		}
 		setGroupId(element.attribute("group"));
+		setCollapsed(element.attribute("collapsed", "0").toInt() != 0);
+		setFrozen(element.attribute("frozen", "0").toInt() != 0);
 	}
 
 	if (presetMode)
@@ -560,18 +575,110 @@ void Track::setGroupId(const QString& id)
 
 
 
-GroupTrack* Track::group() const
+const QString& Track::uid() const
 {
-	if (m_groupId.isEmpty() || m_type == Type::Group) { return nullptr; }
+	if (m_uid.isEmpty()) { m_uid = QUuid::createUuid().toString(QUuid::WithoutBraces); }
+	return m_uid;
+}
+
+
+
+
+void Track::regenerateUid()
+{
+	m_uid = QUuid::createUuid().toString(QUuid::WithoutBraces);
+}
+
+
+
+
+Track* Track::parentTrack() const
+{
+	if (m_groupId.isEmpty()) { return nullptr; }
 	for (const auto& track : m_trackContainer->tracks())
 	{
-		if (track->type() == Type::Group)
-		{
-			auto g = static_cast<GroupTrack*>(track);
-			if (g->uid() == m_groupId) { return g; }
-		}
+		if (track != this && !track->m_uid.isEmpty() && track->m_uid == m_groupId) { return track; }
 	}
 	return nullptr;
+}
+
+
+
+
+GroupTrack* Track::group() const
+{
+	const auto parent = parentTrack();
+	return parent != nullptr && parent->type() == Type::Group ? static_cast<GroupTrack*>(parent) : nullptr;
+}
+
+
+
+
+std::vector<Track*> Track::childTracks() const
+{
+	std::vector<Track*> result;
+	if (m_uid.isEmpty()) { return result; }
+	for (const auto& track : m_trackContainer->tracks())
+	{
+		if (track != this && track->m_groupId == m_uid) { result.push_back(track); }
+	}
+	return result;
+}
+
+
+
+
+bool Track::hasChildTracks() const
+{
+	if (m_uid.isEmpty()) { return false; }
+	for (const auto& track : m_trackContainer->tracks())
+	{
+		if (track != this && track->m_groupId == m_uid) { return true; }
+	}
+	return false;
+}
+
+
+
+
+int Track::treeDepth() const
+{
+	int depth = 0;
+	for (auto parent = parentTrack(); parent != nullptr && depth < 8; parent = parent->parentTrack()) { ++depth; }
+	return depth;
+}
+
+
+
+
+bool Track::isHiddenByCollapse() const
+{
+	int guard = 0;
+	for (auto parent = parentTrack(); parent != nullptr && guard < 8; parent = parent->parentTrack(), ++guard)
+	{
+		if (parent->isCollapsed()) { return true; }
+	}
+	return false;
+}
+
+
+
+
+void Track::setCollapsed(bool collapsed)
+{
+	if (m_collapsed == collapsed) { return; }
+	m_collapsed = collapsed;
+	emit collapsedChanged();
+}
+
+
+
+
+void Track::setFrozen(bool frozen)
+{
+	if (m_frozen == frozen) { return; }
+	m_frozen = frozen;
+	emit frozenChanged();
 }
 
 

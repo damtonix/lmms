@@ -47,26 +47,12 @@ public:
 	void saveTrackSpecificSettings(QDomDocument& doc, QDomElement& parent, bool presetMode) override;
 	void loadTrackSpecificSettings(const QDomElement& element) override;
 
-	const QString& uid() const { return m_uid; }
-
-	bool isCollapsed() const { return m_collapsed; }
-	void setCollapsed(bool collapsed);
-
 	//! All tracks of the same container that belong to this group, in container order
 	std::vector<Track*> members() const;
-
-	//! Generate a fresh, unique id (used when a group is cloned)
-	void regenerateUid();
 
 	//! Merged [start, end) tick ranges covered by the clips of all members
 	std::vector<std::pair<tick_t, tick_t>> memberClipRanges() const;
 
-signals:
-	void collapsedChanged();
-
-private:
-	QString m_uid;
-	bool m_collapsed = false;
 };
 
 } // namespace lmms

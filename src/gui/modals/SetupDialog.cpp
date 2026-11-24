@@ -42,6 +42,7 @@
 #include "MidiSetupWidget.h"
 #include "ProjectJournal.h"
 #include "SetupDialog.h"
+#include "GuiApplication.h"
 #include "TabBar.h"
 #include "TabButton.h"
 #include "TimeLineWidget.h"
@@ -158,7 +159,8 @@ SetupDialog::SetupDialog(ConfigTab tab_to_open) :
 	m_sf2File(QDir::toNativeSeparators(ConfigManager::inst()->sf2File())),
 #endif
 	m_themeDir(QDir::toNativeSeparators(ConfigManager::inst()->themeDir())),
-	m_backgroundPicFile(QDir::toNativeSeparators(ConfigManager::inst()->backgroundPicFile()))
+	m_backgroundPicFile(QDir::toNativeSeparators(ConfigManager::inst()->backgroundPicFile())),
+	m_customSamplesDir(QDir::toNativeSeparators(ConfigManager::inst()->value("paths", "customsamplesdir")))
 {
 	setWindowIcon(embed::getIconPixmap("setup_general"));
 	setWindowTitle(tr("Settings"));
@@ -836,6 +838,10 @@ SetupDialog::SetupDialog(ConfigTab tab_to_open) :
 		SLOT(setLADSPADir(const QString&)),
 		SLOT(openLADSPADir()),
 		m_ladspaDirLineEdit, "add_folder");
+	addPathEntry(tr("Eigener Sample-Ordner (erscheint im Samples-Tab)"), m_customSamplesDir,
+		SLOT(setCustomSamplesDir(const QString&)),
+		SLOT(openCustomSamplesDir()),
+		m_customSamplesDirLineEdit);
 	addPathEntry(tr("SF2 directory"), m_sf2Dir,
 		SLOT(setSF2Dir(const QString&)),
 		SLOT(openSF2Dir()),
@@ -1036,6 +1042,9 @@ void SetupDialog::accept()
 	ConfigManager::inst()->setGIGDir(QDir::fromNativeSeparators(m_gigDir));
 	ConfigManager::inst()->setThemeDir(QDir::fromNativeSeparators(m_themeDir));
 	ConfigManager::inst()->setBackgroundPicFile(m_backgroundPicFile);
+	// Custom: own sample folder, shown in the samples tab
+	ConfigManager::inst()->setValue("paths", "customsamplesdir", QDir::fromNativeSeparators(m_customSamplesDir).trimmed());
+	if (getGUI() != nullptr && getGUI()->mainWindow() != nullptr) { getGUI()->mainWindow()->refreshSamplesBrowser(); }
 
 	// Tell all audio-settings-widgets to save their settings.
 	for(AswMap::iterator it = m_audioIfaceSetupWidgets.begin();
@@ -1483,6 +1492,27 @@ void SetupDialog::openBackgroundPicFile()
 void SetupDialog::setBackgroundPicFile(const QString & backgroundPicFile)
 {
 	m_backgroundPicFile = backgroundPicFile;
+}
+
+
+
+
+void SetupDialog::openCustomSamplesDir()
+{
+	QString new_dir = FileDialog::getExistingDirectory(this,
+		tr("Sample-Ordner w\xc3\xa4hlen"), m_customSamplesDir);
+	if (!new_dir.isEmpty())
+	{
+		m_customSamplesDirLineEdit->setText(QDir::toNativeSeparators(new_dir));
+	}
+}
+
+
+
+
+void SetupDialog::setCustomSamplesDir(const QString & dir)
+{
+	m_customSamplesDir = dir;
 }
 
 

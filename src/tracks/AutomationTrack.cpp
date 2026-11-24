@@ -28,6 +28,9 @@
 
 #include "AutomationTrackView.h"
 #include "AutomationClip.h"
+#include "AutomatableModel.h"
+#include "ProjectJournal.h"
+#include "Engine.h"
 
 namespace lmms
 {
@@ -68,6 +71,63 @@ Clip* AutomationTrack::createClip(const TimePos & pos)
 
 void AutomationTrack::saveTrackSpecificSettings(QDomDocument& doc, QDomElement& _this, bool presetMode)
 {
+	if (const auto model = target()) { _this.setAttribute("target", ProjectJournal::idToSave(model->id())); }
+}
+
+
+
+
+AutomatableModel* AutomationTrack::target() const
+{
+	if (m_targetId != 0)
+	{
+		if (auto model = dynamic_cast<AutomatableModel*>(Engine::projectJournal()->journallingObject(m_targetId)))
+		{
+			return model;
+		}
+	}
+	// older projects: use the control of the first clip
+	for (const auto& clip : getClips())
+	{
+		auto autoClip = dynamic_cast<AutomationClip*>(clip);
+		if (autoClip && !autoClip->objects().empty() && autoClip->objects().front()) { return autoClip->objects().front(); }
+	}
+	return nullptr;
+}
+
+
+
+
+void AutomationTrack::setTarget(AutomatableModel* model)
+{
+	m_targetId = model ? model->id() : 0;
+	if (model != nullptr)
+	{
+		for (const auto& clip : getClips())
+		{
+			if (auto autoClip = dynamic_cast<AutomationClip*>(clip))
+			{
+				autoClip->clearObjects();
+				autoClip->addObject(model, false);
+			}
+		}
+	}
+	emit targetChanged();
+}
+
+
+
+
+Track* AutomationTrack::owningTrack(const AutomatableModel* model)
+{
+	for (Model* m = model ? model->parentModel() : nullptr; m != nullptr; m = m->parentModel())
+	{
+		if (auto track = dynamic_cast<Track*>(m))
+		{
+			return track->type() == Type::Instrument ? track : nullptr;
+		}
+	}
+	return nullptr;
 }
 
 
@@ -75,6 +135,7 @@ void AutomationTrack::saveTrackSpecificSettings(QDomDocument& doc, QDomElement& 
 
 void AutomationTrack::loadTrackSpecificSettings( const QDomElement & _this )
 {
+	m_targetId = static_cast<jo_id_t>(_this.attribute("target", "0").toUInt());
 	// just in case something somehow wrent wrong...
 	if( type() == Type::HiddenAutomation )
 	{

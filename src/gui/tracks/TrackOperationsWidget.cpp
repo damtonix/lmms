@@ -38,6 +38,8 @@
 #include "ColorChooser.h"
 #include "ConfigManager.h"
 #include "GroupTrack.h"
+#include "MainWindow.h"
+#include "GuiApplication.h"
 #include "Song.h"
 #include "embed.h"
 #include "Engine.h"
@@ -289,13 +291,63 @@ void TrackOperationsWidget::updateMenu()
 
 void TrackOperationsWidget::addGroupMenu(QMenu* toMenu)
 {
-	// Custom: track groups, only in the song editor
 	auto tcv = m_trackView->trackContainerView();
 	auto track = m_trackView->getTrack();
-	if (tcv->model() != Engine::getSong()) { return; }
+	const bool inSong = tcv->model() == Engine::getSong();
 
+	// Custom: freeze / bounce for instrument tracks
+	if (track->type() == Track::Type::Instrument)
+	{
+		toMenu->addSeparator();
+		toMenu->addAction(embed::getIconPixmap(track->isFrozen() ? "freeze_off" : "freeze", 16, 16),
+			track->isFrozen() ? tr("Spur auftauen") : tr("Spur einfrieren (Instrument und Effekte anhalten)"),
+			this, [track] {
+				track->setFrozen(!track->isFrozen());
+				Engine::getSong()->setModified();
+			});
+	}
+	if (inSong && (track->type() == Track::Type::Instrument || track->type() == Track::Type::Sample))
+	{
+		toMenu->addAction(embed::getIconPixmap("bounce", 16, 16), tr("Bounce als Sample-Spur..."),
+			this, [track] { getGUI()->mainWindow()->bounceTrack(track); });
+	}
+
+	if (!inSong) { return; }
 	toMenu->addSeparator();
 
+	// Custom: automation tracks belonging to an instrument track
+	if (track->type() == Track::Type::Instrument)
+	{
+		toMenu->addAction(embed::getIconPixmap("automation_track", 16, 16), tr("Neue Automationsspur f\xc3\xbcr diese Spur"),
+			this, [tcv, track] {
+				auto automationTrack = Track::create(Track::Type::Automation, Engine::getSong());
+				tcv->createTrackView(automationTrack);
+				track->setCollapsed(false);
+				tcv->assignTrackToGroup(automationTrack, track->uid());
+			});
+	}
+	if (track->type() == Track::Type::Automation)
+	{
+		QMenu* ownerMenu = toMenu->addMenu(embed::getIconPixmap("instrument_track", 16, 16), tr("Instrument-Spur"));
+		bool any = false;
+		for (const auto& other : Engine::getSong()->tracks())
+		{
+			if (other->type() != Track::Type::Instrument) { continue; }
+			any = true;
+			auto action = ownerMenu->addAction(tr("Zu \"%1\" geh\xc3\xb6ren").arg(other->name()),
+				this, [tcv, track, other] { tcv->assignTrackToGroup(track, other->uid()); });
+			action->setCheckable(true);
+			action->setChecked(track->parentTrack() == other);
+		}
+		if (!any) { ownerMenu->addAction(tr("(keine Instrument-Spuren)"))->setEnabled(false); }
+		if (track->parentTrack() != nullptr && track->parentTrack()->type() == Track::Type::Instrument)
+		{
+			ownerMenu->addSeparator();
+			ownerMenu->addAction(tr("Zuordnung l\xc3\xb6sen"), this, [tcv, track] { tcv->assignTrackToGroup(track, QString()); });
+		}
+	}
+
+	// Custom: track groups
 	if (track->type() == Track::Type::Group)
 	{
 		auto group = static_cast<GroupTrack*>(track);
@@ -318,9 +370,8 @@ void TrackOperationsWidget::addGroupMenu(QMenu* toMenu)
 	{
 		if (other->type() != Track::Type::Group) { continue; }
 		if (!hasGroups) { groupMenu->addSeparator(); hasGroups = true; }
-		auto group = static_cast<GroupTrack*>(other);
-		const QString uid = group->uid();
-		auto action = groupMenu->addAction(tr("Zu \"%1\" hinzuf\xc3\xbcgen").arg(group->name()),
+		const QString uid = other->uid();
+		auto action = groupMenu->addAction(tr("Zu \"%1\" hinzuf\xc3\xbcgen").arg(other->name()),
 			this, [tcv, track, uid] { tcv->assignTrackToGroup(track, uid); });
 		action->setCheckable(true);
 		action->setChecked(track->groupId() == uid);

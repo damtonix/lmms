@@ -30,7 +30,9 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QStyleOption>
+#include <QLabel>
 #include <QTimer>
+#include <QToolButton>
 
 
 #include "AudioEngine.h"
@@ -101,6 +103,11 @@ TrackView::TrackView(Track* track, TrackContainerView* tcv)
 		m_trackContainerView->realignTracks();
 		groupStateChanged();
 	});
+	connect(m_track, &Track::collapsedChanged, this, [this] {
+		m_trackContainerView->realignTracks();
+		applyGroupIndent();
+	});
+	connect(m_track, &Track::frozenChanged, this, &TrackView::updateFrozenState);
 	
 	auto trackGrip = m_trackOperationsWidget.getTrackGrip();
 	connect(trackGrip, &TrackGrip::grabbed, this, &TrackView::onTrackGripGrabbed);
@@ -114,8 +121,9 @@ TrackView::TrackView(Track* track, TrackContainerView* tcv)
 
 	m_trackContainerView->addTrackView( this );
 
-	// Custom: apply the group indent once the derived view has created its widgets
+	// Custom: apply the group indent / frozen state once the derived view has created its widgets
 	QTimer::singleShot(0, this, &TrackView::applyGroupIndent);
+	QTimer::singleShot(0, this, &TrackView::updateFrozenState);
 }
 
 
@@ -137,6 +145,7 @@ void TrackView::resizeEvent( QResizeEvent * re )
 
 	m_trackContentWidget.setFixedHeight( height() );
 	if (m_groupIndentBar) { m_groupIndentBar->setFixedHeight(m_trackSettingsWidget.height()); }
+	if (m_frozenOverlay) { m_frozenOverlay->setGeometry(0, 0, m_trackContentWidget.width(), height()); }
 }
 
 
@@ -376,14 +385,18 @@ void TrackView::muteChanged()
 
 void TrackView::applyGroupIndent()
 {
-	constexpr int GroupIndent = 18;
-	const auto group = m_track->group();
-	const int indent = group != nullptr ? GroupIndent : 0;
+	constexpr int IndentStep = 18;
+	const auto parent = m_track->parentTrack();
+	const int depth = m_track->treeDepth();
+	// tracks with children (e.g. instruments with automation tracks) get a fold arrow; groups have their own
+	const bool showFold = m_track->type() != Track::Type::Group && m_track->hasChildTracks();
+	const int indent = depth * IndentStep + (showFold ? IndentStep : 0);
 	auto settings = &m_trackSettingsWidget;
 
 	// The derived view builds its widgets after the TrackView constructor; wait until they exist
 	auto children = settings->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly);
 	children.removeAll(m_groupIndentBar);
+	children.removeAll(m_foldButton);
 	const bool settingsBuilt = settings->layout() != nullptr || !children.isEmpty();
 	if (indent != m_groupIndent && settingsBuilt)
 	{
@@ -396,38 +409,82 @@ void TrackView::applyGroupIndent()
 		}
 		else
 		{
-			for (auto child : settings->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly))
-			{
-				if (child != m_groupIndentBar) { child->move(child->x() + delta, child->y()); }
-			}
+			for (auto child : children) { child->move(child->x() + delta, child->y()); }
 		}
 		// keep everything inside the fixed settings width: shrink the name button
 		if (auto label = settings->findChild<TrackLabelButton*>(QString(), Qt::FindDirectChildrenOnly))
 		{
-			if (label->width() > 2 * GroupIndent) { label->setFixedWidth(label->width() - delta); }
+			if (label->width() - delta > 2 * IndentStep) { label->setFixedWidth(label->width() - delta); }
 		}
 		m_groupIndent = indent;
 	}
 
-	if (group != nullptr)
+	if (parent != nullptr)
 	{
 		if (m_groupIndentBar == nullptr)
 		{
 			m_groupIndentBar = new QWidget(settings);
 			m_groupIndentBar->setAutoFillBackground(true);
 		}
-		QColor color = group->color().value_or(palette().color(QPalette::Highlight));
-		if (group->isMutedSelf()) { color = color.darker(200); }
+		QColor color = parent->color().value_or(palette().color(QPalette::Highlight));
+		if (parent->isMuted()) { color = color.darker(200); }
 		QPalette pal = m_groupIndentBar->palette();
 		pal.setColor(QPalette::Window, color);
 		m_groupIndentBar->setPalette(pal);
-		m_groupIndentBar->setGeometry(GroupIndent - 8, 0, 4, settings->height());
+		m_groupIndentBar->setGeometry(depth * IndentStep - 8, 0, 4, settings->height());
 		m_groupIndentBar->show();
 		m_groupIndentBar->raise();
 	}
 	else if (m_groupIndentBar != nullptr)
 	{
 		m_groupIndentBar->hide();
+	}
+
+	if (showFold)
+	{
+		if (m_foldButton == nullptr)
+		{
+			m_foldButton = new QToolButton(settings);
+			m_foldButton->setAutoRaise(true);
+			m_foldButton->setFocusPolicy(Qt::NoFocus);
+			m_foldButton->setToolTip(tr("Automationsspuren ein-/ausklappen"));
+			connect(m_foldButton, &QToolButton::clicked, this, [this] { m_track->setCollapsed(!m_track->isCollapsed()); });
+		}
+		m_foldButton->setArrowType(m_track->isCollapsed() ? Qt::RightArrow : Qt::DownArrow);
+		m_foldButton->setGeometry(depth * IndentStep, (settings->height() - 22) / 2, 16, 22);
+		m_foldButton->show();
+		m_foldButton->raise();
+	}
+	else if (m_foldButton != nullptr)
+	{
+		m_foldButton->hide();
+	}
+}
+
+
+
+
+void TrackView::updateFrozenState()
+{
+	const bool frozen = m_track->isFrozen();
+	// no clip editing while frozen
+	m_trackContentWidget.setEnabled(!frozen);
+	if (frozen)
+	{
+		if (m_frozenOverlay == nullptr)
+		{
+			m_frozenOverlay = new QLabel(tr("   EINGEFROREN  (Zahnrad \xe2\x86\x92 Spur auftauen)"), &m_trackContentWidget);
+			m_frozenOverlay->setAttribute(Qt::WA_TransparentForMouseEvents);
+			m_frozenOverlay->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+			m_frozenOverlay->setStyleSheet("background-color: rgba(90, 160, 255, 70); color: #d8ecff; font-weight: bold;");
+		}
+		m_frozenOverlay->setGeometry(0, 0, m_trackContentWidget.width(), height());
+		m_frozenOverlay->show();
+		m_frozenOverlay->raise();
+	}
+	else if (m_frozenOverlay != nullptr)
+	{
+		m_frozenOverlay->hide();
 	}
 }
 

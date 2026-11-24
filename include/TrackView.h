@@ -27,6 +27,9 @@
 
 #include <QWidget>
 
+class QLabel;
+class QToolButton;
+
 #include "JournallingObject.h"
 #include "ModelView.h"
 #include "TrackContentWidget.h"
@@ -124,6 +127,8 @@ public slots:
 	void groupStateChanged();
 	//! Custom: indent the settings area of group members and show the group color there
 	void applyGroupIndent();
+	//! Custom: show/hide the frozen overlay and lock clip editing
+	void updateFrozenState();
 
 
 protected:
@@ -221,6 +226,8 @@ private:
 
 	int m_groupIndent = 0;              //!< Custom: currently applied indent
 	QWidget* m_groupIndentBar = nullptr; //!< Custom: colored bar in the indent area
+	QToolButton* m_foldButton = nullptr; //!< Custom: fold arrow for tracks with child tracks
+	QLabel* m_frozenOverlay = nullptr;   //!< Custom: shown over the content of frozen tracks
 
 	virtual FadeButton * getActivityIndicator()
 	{

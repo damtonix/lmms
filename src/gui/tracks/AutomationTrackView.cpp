@@ -30,6 +30,7 @@
 #include "embed.h"
 #include "Engine.h"
 #include "ProjectJournal.h"
+#include "Song.h"
 #include "StringPairDrag.h"
 #include "TrackContainerView.h"
 #include "TrackLabelButton.h"
@@ -45,6 +46,9 @@ AutomationTrackView::AutomationTrackView( AutomationTrack * _at, TrackContainerV
 		tlb->setIcon(embed::getIconPixmap("automation_track"));
 		tlb->move(3, 1);
 		tlb->show();
+		m_label = tlb;
+		connect(_at, &AutomationTrack::targetChanged, this, &AutomationTrackView::updateTargetToolTip);
+		updateTargetToolTip();
 		setModel(_at);
 }
 
@@ -65,23 +69,38 @@ void AutomationTrackView::dropEvent( QDropEvent * _de )
 		auto mod = dynamic_cast<AutomatableModel*>(Engine::projectJournal()->journallingObject(val.toInt()));
 		if( mod != nullptr )
 		{
-			const int deX = position(_de).x();
-			TimePos pos = TimePos(trackContainerView()->currentPosition()
-				+ (deX - getTrackContentWidget()->x()) * TimePos::ticksPerBar()
-				/ static_cast<int>(trackContainerView()->pixelsPerBar())).toAbsoluteBar();
+			// Custom: the dropped control becomes the (only) target of this automation track
+			auto track = static_cast<AutomationTrack*>(getTrack());
+			track->addJournalCheckPoint();
+			const auto oldTarget = track->target();
+			const bool autoNamed = track->name() == AutomationTrack::tr("Automation track")
+				|| (oldTarget && track->name() == oldTarget->fullDisplayName());
+			track->setTarget(mod);
 
-			if( pos.getTicks() < 0 )
+			// name the track after the control unless the user renamed it
+			if (autoNamed) { track->setName(mod->fullDisplayName()); }
+
+			// attach to the instrument track owning the control
+			if (auto owner = AutomationTrack::owningTrack(mod);
+				owner != nullptr && owner->trackContainer() == track->trackContainer())
 			{
-				pos.setTicks( 0 );
+				trackContainerView()->assignTrackToGroup(track, owner->uid());
 			}
-
-			Clip * clip = getTrack()->createClip( pos );
-			auto autoClip = dynamic_cast<AutomationClip*>(clip);
-			autoClip->addObject( mod );
+			Engine::getSong()->setModified();
+			_de->accept();
 		}
 	}
 
 	update();
+}
+
+
+void AutomationTrackView::updateTargetToolTip()
+{
+	const auto model = static_cast<AutomationTrack*>(getTrack())->target();
+	m_label->setToolTip(model
+		? tr("Gesteuert: %1").arg(model->fullDisplayName())
+		: tr("Kein Regler festgelegt \xe2\x80\x93 ziehe einen Regler mit Strg auf diese Spur"));
 }
 
 

@@ -73,6 +73,8 @@ InstrumentTrack::InstrumentTrack(TrackContainer* tc) :
 	m_microtuner()
 {
 	m_audioBusHandle.setTrack(this); // Custom: group mute
+	// Custom: stop sounding notes when the track gets frozen
+	connect(this, &Track::frozenChanged, this, [this] { if (isFrozen()) { silenceAllNotes(); } });
 	m_pitchModel.setCenterValue( 0 );
 	m_pitchModel.setStrictStepSize(true);
 	m_panningModel.setCenterValue( DefaultPanning );
@@ -308,6 +310,7 @@ void InstrumentTrack::processCCEvent(int controller)
 
 void InstrumentTrack::processInEvent( const MidiEvent& event, const TimePos& time, f_cnt_t offset )
 {
+	if (isFrozen()) { return; } // Custom: frozen tracks ignore all input
 	if (Engine::getSong()->isExporting() && event.source() == MidiEvent::Source::External)
 	{
 		return;
@@ -687,7 +690,8 @@ void InstrumentTrack::removeMidiPortNode( DataFile & _dataFile )
 bool InstrumentTrack::play( const TimePos & _start, const f_cnt_t _frames,
 							const f_cnt_t _offset, int _clip_num )
 {
-	if( ! m_instrument || ! tryLock() )
+	// Custom: a frozen track does not start any notes
+	if( ! m_instrument || isFrozen() || ! tryLock() )
 	{
 		return false;
 	}

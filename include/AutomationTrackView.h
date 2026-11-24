@@ -36,6 +36,8 @@ class AutomationTrack;
 namespace gui
 {
 
+class TrackLabelButton;
+
 
 class AutomationTrackView : public TrackView
 {
@@ -45,6 +47,10 @@ public:
 
 	void dragEnterEvent( QDragEnterEvent * _dee ) override;
 	void dropEvent( QDropEvent * _de ) override;
+
+private:
+	void updateTargetToolTip(); //!< Custom
+	TrackLabelButton* m_label = nullptr;
 } ;
 
 

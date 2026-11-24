@@ -88,6 +88,8 @@ public:
 
 	//! Custom: preview volume (0.0 - 1.0) shared by all file browsers
 	static float previewVolume();
+	//! Custom: replace the shown directories ('*'-separated) and reload
+	void setDirectories(const QString& directories) { m_directories = directories; reloadTree(); }
 
 private slots:
 	void reloadTree();

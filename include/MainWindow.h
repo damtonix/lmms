@@ -40,6 +40,10 @@ class QGridLayout;
 namespace lmms
 {
 
+class Track;
+
+namespace gui { class FileBrowser; }
+
 namespace gui
 {
 
@@ -52,6 +56,16 @@ class MainWindow : public QMainWindow
 {
 	Q_OBJECT
 public:
+	//! Custom: render the song (or the loop range) to a WAV file with a progress dialog
+	bool renderToWav(const QString& path, bool betweenLoopMarkers, const QString& title);
+	//! Custom: ask for a WAV file name (remembers the last folder); empty if cancelled
+	QString askWavFile(const QString& title, const QString& baseName);
+	//! Custom: render only @p track and insert the result as a sample track below it
+	void bounceTrack(Track* track);
+	//! Custom: re-read the configured sample folders into the samples tab
+	void refreshSamplesBrowser();
+	static QString samplesBrowserDirectories();
+
 	QMdiArea* workspace()
 	{
 		return static_cast<QMdiArea*>(m_workspace);
@@ -197,6 +211,8 @@ private:
 	void handleSaveResult(QString const & filename, bool songSavedSuccessfully);
 	bool guiSaveProject();
 	bool guiSaveProjectAs( const QString & filename );
+
+	FileBrowser* m_samplesBrowser = nullptr; //!< Custom
 
 	class MovableQMdiArea : public QMdiArea
 	{

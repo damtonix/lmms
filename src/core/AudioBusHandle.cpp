@@ -112,7 +112,7 @@ bool AudioBusHandle::processEffects()
 
 void AudioBusHandle::doProcessing()
 {
-	if ((m_mutedModel && m_mutedModel->value()) || (m_track && m_track->isMuted()))
+	if ((m_mutedModel && m_mutedModel->value()) || (m_track && (m_track->isMuted() || m_track->isFrozen())))
 	{
 		return;
 	}

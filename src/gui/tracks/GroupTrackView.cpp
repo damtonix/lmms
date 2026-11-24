@@ -57,7 +57,7 @@ GroupTrackView::GroupTrackView(GroupTrack* gt, TrackContainerView* tcv) :
 	m_collapseButton->show();
 	m_colorButton->show();
 
-	connect(gt, &GroupTrack::collapsedChanged, this, &GroupTrackView::updateCollapsedState);
+	connect(gt, &Track::collapsedChanged, this, &GroupTrackView::updateCollapsedState);
 	connect(gt, &Track::colorChanged, this, &GroupTrackView::updateColor);
 	connect(gt->getMutedModel(), &BoolModel::dataChanged, this, &GroupTrackView::notifyMembers);
 	connect(gt->getMutedModel(), &BoolModel::dataChanged, getTrackContentWidget(), qOverload<>(&QWidget::update));
@@ -156,7 +156,7 @@ void GroupTrackView::notifyMembers()
 {
 	for (auto tv : trackContainerView()->trackViews())
 	{
-		if (tv->getTrack()->group() == getTrack()) { tv->groupStateChanged(); }
+		if (tv != this) { tv->groupStateChanged(); }
 	}
 }
 

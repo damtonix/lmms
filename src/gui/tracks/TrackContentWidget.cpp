@@ -34,6 +34,9 @@
 #include <algorithm>
 
 #include "AutomationClip.h"
+#include "embed.h"
+#include "TextFloat.h"
+#include "AutomationTrack.h"
 #include "Clipboard.h"
 #include "DataFile.h"
 #include "DeprecationHelper.h"
@@ -521,10 +524,24 @@ void TrackContentWidget::mousePressEvent( QMouseEvent * me )
 		{
 			so.at( i )->setSelected( false);
 		}
+		// Custom: automation tracks need their control first
+		auto automationTrack = getTrack()->type() == Track::Type::Automation
+			? static_cast<AutomationTrack*>(getTrack()) : nullptr;
+		if (automationTrack && automationTrack->target() == nullptr)
+		{
+			TextFloat::displayMessage(tr("Kein Regler festgelegt"),
+				tr("Ziehe zuerst einen Regler mit gedr\xc3\xbc""ckter Strg-Taste auf diese Automationsspur."),
+				embed::getIconPixmap("automation_track"), 3500);
+			return;
+		}
 		getTrack()->addJournalCheckPoint();
 		const float snapSize = getGUI()->songEditor()->m_editor->getSnapSize();
 		const TimePos timePos = TimePos(getPosition(pos.x())).quantize(snapSize, true);
-		getTrack()->createClip(timePos);
+		Clip* clip = getTrack()->createClip(timePos);
+		if (automationTrack && clip)
+		{
+			if (auto autoClip = dynamic_cast<AutomationClip*>(clip)) { autoClip->addObject(automationTrack->target()); }
+		}
 	}
 }
 

@@ -128,6 +128,8 @@ private slots:
 	void setThemeDir(const QString & themeDir);
 	void openBackgroundPicFile();
 	void setBackgroundPicFile(const QString & backgroundPicFile);
+	void openCustomSamplesDir();                        //!< Custom
+	void setCustomSamplesDir(const QString & dir);      //!< Custom
 
 	void showRestartWarning();
 
@@ -209,6 +211,7 @@ private:
 #endif
 	QString m_themeDir;
 	QString m_backgroundPicFile;
+	QString m_customSamplesDir; //!< Custom
 
 	QLineEdit * m_workingDirLineEdit;
 	QLineEdit * m_vstDirLineEdit;
@@ -220,6 +223,7 @@ private:
 	QLineEdit * m_sf2FileLineEdit;
 #endif
 	QLineEdit * m_backgroundPicFileLineEdit;
+	QLineEdit * m_customSamplesDirLineEdit; //!< Custom
 
 	QLabel * restartWarningLbl;
 };

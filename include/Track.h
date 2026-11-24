@@ -77,11 +77,32 @@ public:
 	//! Own mute button state (ignores group)
 	bool isMutedSelf() const { return m_mutedModel.value(); }
 
-	// -- Custom: track groups ------------------------
+	// -- Custom: track tree (groups, automation tracks under instrument tracks) --
+	//! Unique id of this track (created on first use, saved with the project)
+	const QString& uid() const;
+	void regenerateUid();
+	//! Only for loading old project formats
+	void setUidForLoading(const QString& id) { m_uid = id; }
+	//! Id of the parent track (a group or, for automation tracks, an instrument track)
 	const QString& groupId() const { return m_groupId; }
 	void setGroupId(const QString& id);
-	//! The group track this track belongs to, or nullptr
+	//! The parent track, or nullptr
+	Track* parentTrack() const;
+	//! The parent if it is a group track (used for mute), or nullptr
 	GroupTrack* group() const;
+	//! Direct children of this track, in container order
+	std::vector<Track*> childTracks() const;
+	bool hasChildTracks() const;
+	//! Nesting depth (0 = top level)
+	int treeDepth() const;
+	//! True if any ancestor is collapsed
+	bool isHiddenByCollapse() const;
+	bool isCollapsed() const { return m_collapsed; }
+	void setCollapsed(bool collapsed);
+
+	// -- Custom: freeze (stop all processing, e.g. of a VST) --
+	bool isFrozen() const { return m_frozen; }
+	void setFrozen(bool frozen);
 	// ------------------------------------------------
 
 	using clipVector = std::vector<Clip*>;
@@ -339,6 +360,9 @@ private:
 	std::optional<QColor> m_color;
 
 	QString m_groupId;
+	mutable QString m_uid;
+	bool m_collapsed = false;
+	bool m_frozen = false;
 
 	friend class gui::TrackView;
 
@@ -349,6 +373,8 @@ signals:
 	void clipAdded( lmms::Clip * );
 	void colorChanged();
 	void groupChanged();
+	void collapsedChanged();
+	void frozenChanged();
 } ;
 
 

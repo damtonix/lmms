@@ -32,6 +32,8 @@
 namespace lmms
 {
 
+class AutomatableModel;
+
 class LMMS_EXPORT AutomationTrack : public Track
 {
 	Q_OBJECT
@@ -53,7 +55,20 @@ public:
 	void saveTrackSpecificSettings(QDomDocument& doc, QDomElement& parent, bool presetMode) override;
 	void loadTrackSpecificSettings( const QDomElement & _this ) override;
 
+	// -- Custom: one fixed target control per automation track --
+	//! The control automated by this track (falls back to the object of the first clip), or nullptr
+	AutomatableModel* target() const;
+	//! Set the control; all clips of this track are switched to it
+	void setTarget(AutomatableModel* model);
+	//! The instrument track that owns @p model, or nullptr
+	static Track* owningTrack(const AutomatableModel* model);
+
+signals:
+	void targetChanged();
+
 private:
+	jo_id_t m_targetId = 0;
+
 	friend class AutomationTrackView;
 
 } ;

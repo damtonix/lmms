@@ -125,10 +125,10 @@ void TrackGrip::paintEvent(QPaintEvent*)
 	p.drawTiledPixmap(r, m_isGrabbed ? *s_grabbedPixmap : *s_releasedPixmap);
 
 	// Custom: members of a group get a strip in the group's color
-	if (const auto group = m_trackView->getTrack()->group())
+	if (const auto parent = m_trackView->getTrack()->parentTrack())
 	{
-		const auto groupColor = group->color().value_or(palette().color(QPalette::Highlight));
-		p.fillRect(QRect(0, 0, 4, height()), group->isMutedSelf() ? groupColor.darker(200) : groupColor);
+		const auto parentColor = parent->color().value_or(palette().color(QPalette::Highlight));
+		p.fillRect(QRect(0, 0, 4, height()), parent->isMuted() ? parentColor.darker(200) : parentColor);
 	}
 }
 
