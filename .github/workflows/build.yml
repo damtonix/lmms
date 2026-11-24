@@ -6,6 +6,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   linux-x86_64:
+    if: false  # custom fork: only the MinGW Windows build is needed
     name: linux-x86_64
     runs-on: ubuntu-22.04
     env:
@@ -98,6 +99,7 @@ jobs:
         env:
           CCACHE_MAXSIZE: 500M
   linux-arm64:
+    if: false  # custom fork: only the MinGW Windows build is needed
     name: linux-arm64
     runs-on: ubuntu-24.04-arm
     env:
@@ -181,6 +183,7 @@ jobs:
         env:
           CCACHE_MAXSIZE: 500M
   macos:
+    if: false  # custom fork: only the MinGW Windows build is needed
     strategy:
       fail-fast: false
       matrix:
@@ -361,6 +364,7 @@ jobs:
         env:
           CCACHE_MAXSIZE: 500M
   msvc:
+    if: false  # custom fork: only the MinGW Windows build is needed
     name: msvc-x64
     runs-on: windows-2025-vs2026
     env:
@@ -447,6 +451,7 @@ jobs:
         env:
           CCACHE_MAXSIZE: 500MB
   msys2:
+    if: false  # custom fork: only the MinGW Windows build is needed
     name: windows-arm64
     runs-on: windows-11-arm
     defaults:
