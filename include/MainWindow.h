@@ -29,6 +29,7 @@
 #include <QTimer>
 #include <QList>
 #include <QMainWindow>
+#include <vector>
 #include <QMdiArea>
 
 #include "ConfigManager.h"
@@ -64,6 +65,13 @@ public:
 	void bounceTrack(Track* track);
 	//! Custom: render only @p track (solo); @p neutralMaster bypasses master effects/volume
 	bool renderTrackSolo(Track* track, const QString& path, const QString& title, bool neutralMaster);
+	//! Custom: render several tracks together, each with everything below it (group members)
+	bool renderTracksSolo(const std::vector<Track*>& roots, const QString& path, const QString& title,
+		bool neutralMaster, bool betweenLoopMarkers);
+	//! Custom: one WAV per group / top-level track
+	void exportStems();
+	//! Custom: list of automatic project versions
+	void showSnapshots();
 	//! Custom: freeze = render the track and play that audio instead of the instrument
 	void freezeTrack(Track* track);
 	void unfreezeTrack(Track* track);

@@ -57,6 +57,7 @@
 #include "TextFloat.h"
 #include "TimeDisplayWidget.h"
 #include "TimeLineWidget.h"
+#include "ArrangementMarkerBar.h"
 #include "TrackView.h"
 
 namespace lmms::gui
@@ -230,6 +231,8 @@ SongEditor::SongEditor( Song * song ) :
 	getGUI()->mainWindow()->addWidgetToToolBar( vc_w );
 
 	static_cast<QVBoxLayout *>( layout() )->insertWidget( 0, m_timeLine );
+	m_markerBar = new ArrangementMarkerBar(this, m_trackHeadWidth);
+	static_cast<QVBoxLayout *>( layout() )->insertWidget( 1, m_markerBar );
 
 	m_leftRightScroll = new QScrollBar( Qt::Horizontal, this );
 	m_leftRightScroll->setMinimum(0);
@@ -799,7 +802,7 @@ void SongEditor::updatePositionLine()
 	if( x >= trackOpWidth + widgetWidth -1 )
 	{
 		m_positionLine->show();
-		m_positionLine->move( x-( m_positionLine->width() - 1 ), m_timeLine->height() );
+		m_positionLine->move( x-( m_positionLine->width() - 1 ), headerHeight() );
 	}
 	else
 	{
@@ -885,11 +888,16 @@ bool SongEditor::knifeMode() const
 
 
 
+int SongEditor::headerHeight() const
+{
+	return m_timeLine->height() + (m_markerBar != nullptr ? m_markerBar->height() : 0);
+}
+
 int SongEditor::trackIndexFromSelectionPoint(int yPos)
 {
-	const TrackView * tv = trackViewAt(yPos - m_timeLine->height());
+	const TrackView * tv = trackViewAt(yPos - headerHeight());
 	return tv ? indexOfTrackView(tv)
-			  : yPos < m_timeLine->height() ? 0
+			  : yPos < headerHeight() ? 0
 											: trackViews().count();
 }
 

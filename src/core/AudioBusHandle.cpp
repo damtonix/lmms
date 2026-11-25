@@ -36,6 +36,9 @@
 #include "Mixer.h"
 #include "Engine.h"
 #include "MixHelpers.h"
+#include "Song.h"
+
+#include <cmath>
 
 namespace lmms
 {
@@ -246,9 +249,35 @@ void AudioBusHandle::doProcessing()
 	const bool anyOutputAfterEffects = processEffects();
 	if (anyOutputAfterEffects || m_bufferUsage)
 	{
+		applyDucking(fpp);
 		// TODO: improve the flow here - convert to pull model
 		Engine::mixer()->mixToChannel(m_buffer, m_nextMixerChannel); // send output to mixer
 		m_bufferUsage = false;
+	}
+}
+
+
+void AudioBusHandle::applyDucking(f_cnt_t fpp)
+{
+	// Custom: beat-synced "Kick-Ducking" after the track effects
+	if (m_track == nullptr) { return; }
+	const auto song = Engine::getSong();
+	if (song == nullptr || !song->periodPlaying()) { return; }
+	const auto duck = m_track->effectiveDuck();
+	if (!duck.has_value() || duck->depth <= 0.f) { return; }
+
+	const double framesPerTick = Engine::framesPerTick();
+	const double msPerFrame = 1000.0 / Engine::audioEngine()->outputSampleRate();
+	const double periodFrames = Track::duckRateTicks(duck->rate) * framesPerTick;
+	const double startFrame = song->periodStartTick() * framesPerTick;
+	auto left = m_buffer.buffer(0);
+	auto right = m_buffer.buffer(1);
+	for (f_cnt_t f = 0; f < fpp; ++f)
+	{
+		const double inPeriod = std::fmod(startFrame + f, periodFrames);
+		const float gain = Track::duckGain(*duck, inPeriod * msPerFrame);
+		left[f] *= gain;
+		right[f] *= gain;
 	}
 }
 

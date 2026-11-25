@@ -141,6 +141,8 @@ private:
 	LcdSpinBox * m_tempoSpinBox;
 
 	TimeLineWidget* m_timeLine;
+	class ArrangementMarkerBar* m_markerBar = nullptr; //!< Custom: section markers below the timeline
+	int headerHeight() const;
 	PositionLine* m_positionLine;
 
 	MeterDialog * m_timeSigDisplay;

@@ -116,6 +116,10 @@ TrackView::TrackView(Track* track, TrackContainerView* tcv)
 		applyGroupIndent();
 	});
 	connect(m_track, &Track::frozenChanged, this, &TrackView::updateFrozenState);
+	// Custom: duck badge in the operations widget (members of a group show the group's ducking too)
+	connect(m_track, &Track::duckChanged, this, [this] {
+		for (auto view : m_trackContainerView->trackViews()) { view->getTrackOperationsWidget()->update(); }
+	});
 	
 	auto trackGrip = m_trackOperationsWidget.getTrackGrip();
 	connect(trackGrip, &TrackGrip::grabbed, this, &TrackView::onTrackGripGrabbed);

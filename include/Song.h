@@ -26,8 +26,11 @@
 #define LMMS_SONG_H
 
 #include <array>
+#include <atomic>
 #include <memory>
+#include <vector>
 
+#include <QColor>
 #include <QString>
 #include <QHash>  // IWYU pragma: keep
 
@@ -254,6 +257,37 @@ public:
 	bool guiSaveProjectAs(const QString & filename);
 	bool saveProjectFile(const QString & filename, bool withResources = false);
 	//! Custom: load @p tempFile (a rewritten copy of the project) but keep @p realFileName as project file
+	//! Custom: when exporting, muted tracks still count for the song length (stems of equal length)
+	void setExportFullLength(bool on) { m_exportFullLength = on; }
+
+	//! Custom: position (in ticks, fractional) at the start of the audio period being rendered, for ducking
+	double periodStartTick() const { return m_periodStartTick.load(std::memory_order_relaxed); }
+	bool periodPlaying() const { return m_periodPlaying.load(std::memory_order_relaxed); }
+
+	//! Custom: named arrangement markers; a section runs from a marker to the next one
+	struct ArrangementMarker
+	{
+		tick_t tick = 0;
+		QString name;
+		QColor color;
+	};
+	const std::vector<ArrangementMarker>& arrangementMarkers() const { return m_arrangementMarkers; }
+	void setArrangementMarkers(std::vector<ArrangementMarker> markers);
+	void addArrangementMarker(tick_t tick, const QString& name, const QColor& color);
+	tick_t sectionEnd(std::size_t index) const;
+	void duplicateSection(std::size_t index);
+	void deleteSection(std::size_t index);
+	//! swaps section @p index with the following one (contents and markers)
+	void swapSectionWithNext(std::size_t index);
+
+	//! Custom: folder with the automatic versions ("snapshots") of a project file
+	static QString snapshotDirectory(const QString& projectFile);
+	static int maxSnapshots();
+	//! Custom: copy a just saved project file into its snapshot folder (skips unchanged files)
+	static void createSnapshot(const QString& savedFile);
+	//! Custom: save the current (maybe unsaved) state as a snapshot, e.g. before a risky operation
+	void snapshotCurrentState(const QString& reason);
+
 	void reloadFromRewrittenFile(const QString& tempFile, const QString& realFileName);
 
 	const QString & projectFileName() const
@@ -410,6 +444,9 @@ private:
 	void setProjectFileName(QString const & projectFileName);
 
 	AutomationTrack * m_globalAutomationTrack;
+	std::vector<ArrangementMarker> m_arrangementMarkers; //!< Custom, sorted by tick
+	//! Custom: all tracks with clips on the song timeline (incl. the global automation track)
+	std::vector<Track*> arrangementTracks() const;
 	bool m_reloadingRewritten = false; //!< Custom
 
 	IntModel m_tempoModel;
@@ -432,6 +469,9 @@ private:
 	volatile bool m_exportLoop;
 	volatile bool m_renderBetweenMarkers;
 	volatile bool m_playing;
+	std::atomic<double> m_periodStartTick{0.0}; //!< Custom: song position at the start of the current period
+	std::atomic<bool> m_periodPlaying{false};
+	bool m_exportFullLength = false; //!< Custom: stems all get the full song length
 	volatile bool m_paused;
 
 	bool m_savingProject;
@@ -472,6 +512,7 @@ private:
 	friend class gui::ControllerRackView;
 
 signals:
+	void arrangementMarkersChanged();
 	void projectLoaded();
 	void playbackStateChanged();
 	void playbackPositionJumped();

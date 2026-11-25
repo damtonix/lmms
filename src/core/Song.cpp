@@ -26,7 +26,12 @@
 #include <QTextStream>
 #include <QCoreApplication>
 #include <QDebug>
+#include <QCryptographicHash>
+#include <QDateTime>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QRegularExpression>
 #include <QMessageBox>
 
 #include <algorithm>
@@ -207,6 +212,7 @@ void Song::savePlayStartPosition()
 void Song::processNextBuffer()
 {
 	// If nothing is playing, there is nothing to do
+	m_periodPlaying.store(false, std::memory_order_relaxed);
 	if (!m_playing) { return; }
 
 	// At the beginning of the song, we have to reset the LFOs
@@ -267,6 +273,11 @@ void Song::processNextBuffer()
 
 	const auto framesPerTick = Engine::framesPerTick();
 	const auto framesPerPeriod = Engine::audioEngine()->framesPerPeriod();
+
+	// Custom: remember where this period starts (beat-synced ducking in the audio bus handles)
+	m_periodStartTick.store(getPlayPos().getTicks() + timeline.frameOffset() / static_cast<double>(framesPerTick),
+		std::memory_order_relaxed);
+	m_periodPlaying.store(true, std::memory_order_relaxed);
 
 	f_cnt_t frameOffsetInPeriod = 0;
 
@@ -596,7 +607,7 @@ void Song::updateLength()
 	m_tracksMutex.lockForRead();
 	for (auto track : tracks())
 	{
-		if (m_exporting && track->isMuted())
+		if (m_exporting && track->isMuted() && !m_exportFullLength)
 		{
 			continue;
 		}
@@ -865,6 +876,7 @@ void Song::clearProject()
 	using gui::getGUI;
 
 	Engine::projectJournal()->setJournalling( false );
+	setArrangementMarkers({}); // Custom
 
 	if( m_playing )
 	{
@@ -1142,6 +1154,16 @@ void Song::loadProject( const QString & fileName )
 			{
 				restoreScaleStates(node.toElement());
 			}
+			else if (node.nodeName() == "pthmarkers")
+			{
+				std::vector<ArrangementMarker> markers;
+				for (auto m = node.firstChildElement("marker"); !m.isNull(); m = m.nextSiblingElement("marker"))
+				{
+					markers.push_back({std::max(0, m.attribute("pos").toInt()), m.attribute("name"),
+						m.hasAttribute("color") ? QColor(m.attribute("color")) : QColor()});
+				}
+				setArrangementMarkers(std::move(markers));
+			}
 			else if (node.nodeName() == "keymaps")
 			{
 				restoreKeymapStates(node.toElement());
@@ -1223,6 +1245,205 @@ void Song::loadProject( const QString & fileName )
 }
 
 
+void Song::setArrangementMarkers(std::vector<ArrangementMarker> markers)
+{
+	std::stable_sort(markers.begin(), markers.end(), [](const auto& a, const auto& b) { return a.tick < b.tick; });
+	m_arrangementMarkers = std::move(markers);
+	emit arrangementMarkersChanged();
+}
+
+void Song::addArrangementMarker(tick_t tick, const QString& name, const QColor& color)
+{
+	auto markers = m_arrangementMarkers;
+	markers.push_back({std::max<tick_t>(0, tick), name, color});
+	setArrangementMarkers(std::move(markers));
+	setModified();
+}
+
+tick_t Song::sectionEnd(std::size_t index) const
+{
+	if (index + 1 < m_arrangementMarkers.size()) { return m_arrangementMarkers[index + 1].tick; }
+	// last section: up to the end of the song
+	const tick_t start = index < m_arrangementMarkers.size() ? m_arrangementMarkers[index].tick : 0;
+	const tick_t songEnd = static_cast<tick_t>(length()) * TimePos::ticksPerBar();
+	return std::max<tick_t>(songEnd, start + TimePos::ticksPerBar());
+}
+
+std::vector<Track*> Song::arrangementTracks() const
+{
+	std::vector<Track*> result(tracks().begin(), tracks().end());
+	if (m_globalAutomationTrack != nullptr) { result.push_back(m_globalAutomationTrack); }
+	return result;
+}
+
+void Song::duplicateSection(std::size_t index)
+{
+	if (index >= m_arrangementMarkers.size()) { return; }
+	const tick_t begin = m_arrangementMarkers[index].tick;
+	const tick_t end = sectionEnd(index);
+	const tick_t len = end - begin;
+	if (len <= 0) { return; }
+
+	{
+		auto guard = Engine::audioEngine()->requestChangesGuard();
+		for (auto track : arrangementTracks())
+		{
+			if (track->numOfClips() > 0) { track->addJournalCheckPoint(); }
+			// collect first: the copies must not be moved again
+			std::vector<Clip*> later, inside;
+			for (auto clip : track->getClips())
+			{
+				const tick_t start = clip->startPosition();
+				if (start >= end) { later.push_back(clip); }
+				else if (start >= begin) { inside.push_back(clip); }
+			}
+			for (auto clip : later) { clip->movePosition(clip->startPosition() + len); }
+			for (auto clip : inside)
+			{
+				auto copy = clip->clone();
+				copy->movePosition(clip->startPosition() + len);
+			}
+		}
+	}
+
+	auto markers = m_arrangementMarkers;
+	for (auto& marker : markers)
+	{
+		if (marker.tick >= end) { marker.tick += len; }
+	}
+	auto copy = m_arrangementMarkers[index];
+	copy.tick = end;
+	markers.push_back(copy);
+	setArrangementMarkers(std::move(markers));
+	updateLength();
+	setModified();
+}
+
+void Song::deleteSection(std::size_t index)
+{
+	if (index >= m_arrangementMarkers.size()) { return; }
+	const tick_t begin = m_arrangementMarkers[index].tick;
+	const tick_t end = sectionEnd(index);
+	const tick_t len = end - begin;
+	if (len <= 0) { return; }
+
+	{
+		auto guard = Engine::audioEngine()->requestChangesGuard();
+		for (auto track : arrangementTracks())
+		{
+			if (track->numOfClips() > 0) { track->addJournalCheckPoint(); }
+			std::vector<Clip*> later, inside;
+			for (auto clip : track->getClips())
+			{
+				const tick_t start = clip->startPosition();
+				if (start >= end) { later.push_back(clip); }
+				else if (start >= begin) { inside.push_back(clip); }
+			}
+			for (auto clip : inside) { delete clip; }
+			for (auto clip : later) { clip->movePosition(clip->startPosition() - len); }
+		}
+	}
+
+	auto markers = m_arrangementMarkers;
+	markers.erase(markers.begin() + index);
+	for (auto& marker : markers)
+	{
+		if (marker.tick >= end) { marker.tick -= len; }
+	}
+	setArrangementMarkers(std::move(markers));
+	updateLength();
+	setModified();
+}
+
+void Song::swapSectionWithNext(std::size_t index)
+{
+	if (index + 1 >= m_arrangementMarkers.size()) { return; }
+	const tick_t a = m_arrangementMarkers[index].tick;
+	const tick_t b = m_arrangementMarkers[index + 1].tick;
+	const tick_t c = sectionEnd(index + 1);
+	if (b <= a || c <= b) { return; }
+
+	{
+		auto guard = Engine::audioEngine()->requestChangesGuard();
+		for (auto track : arrangementTracks())
+		{
+			if (track->numOfClips() > 0) { track->addJournalCheckPoint(); }
+			std::vector<std::pair<Clip*, tick_t>> moves;
+			for (auto clip : track->getClips())
+			{
+				const tick_t start = clip->startPosition();
+				if (start >= a && start < b) { moves.emplace_back(clip, start + (c - b)); }
+				else if (start >= b && start < c) { moves.emplace_back(clip, start - (b - a)); }
+			}
+			for (const auto& [clip, pos] : moves) { clip->movePosition(pos); }
+		}
+	}
+
+	auto markers = m_arrangementMarkers;
+	markers[index].tick = a + (c - b);
+	markers[index + 1].tick = a;
+	setArrangementMarkers(std::move(markers));
+	updateLength();
+	setModified();
+}
+
+
+QString Song::snapshotDirectory(const QString& projectFile)
+{
+	const QFileInfo info(projectFile);
+	const QByteArray hash = QCryptographicHash::hash(info.absoluteFilePath().toUtf8(), QCryptographicHash::Md5).toHex();
+	QString name = info.completeBaseName();
+	name.replace(QRegularExpression(R"([\\/:*?"<>|])"), "_");
+	return ConfigManager::inst()->workingDir() + "snapshots/" + name + "-" + QString::fromLatin1(hash.left(8)) + "/";
+}
+
+int Song::maxSnapshots()
+{
+	return std::clamp(ConfigManager::inst()->value("app", "snapshotcount", "20").toInt(), 1, 500);
+}
+
+void Song::snapshotCurrentState(const QString& reason)
+{
+	if (m_fileName.isEmpty()) { return; }
+	const QDir dir(snapshotDirectory(m_fileName));
+	if (!QDir().mkpath(dir.path())) { return; }
+	QString tag = reason;
+	tag.replace(QRegularExpression(R"([^A-Za-z0-9_-])"), "-");
+	const QString suffix = QFileInfo(m_fileName).suffix().isEmpty() ? "mmpz" : QFileInfo(m_fileName).suffix();
+	saveProjectFile(dir.filePath(QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss") + "_" + tag + "." + suffix));
+}
+
+void Song::createSnapshot(const QString& savedFile)
+{
+	QFile source(savedFile);
+	if (savedFile.isEmpty() || !source.open(QIODevice::ReadOnly)) { return; }
+	const QByteArray data = source.readAll();
+	source.close();
+
+	const QDir dir(snapshotDirectory(savedFile));
+	if (!QDir().mkpath(dir.path())) { return; }
+	const QStringList filters{"*.mmp", "*.mmpz"};
+	auto existing = dir.entryInfoList(filters, QDir::Files, QDir::Name | QDir::Reversed);
+
+	// nothing changed since the newest snapshot
+	if (!existing.isEmpty())
+	{
+		QFile newest(existing.first().absoluteFilePath());
+		if (newest.size() == data.size() && newest.open(QIODevice::ReadOnly) && newest.readAll() == data) { return; }
+	}
+
+	const QString target = dir.filePath(QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss")
+		+ "." + QFileInfo(savedFile).suffix());
+	QFile out(target);
+	if (!out.open(QIODevice::WriteOnly)) { return; }
+	out.write(data);
+	out.close();
+
+	existing = dir.entryInfoList(filters, QDir::Files, QDir::Name | QDir::Reversed);
+	for (int i = maxSnapshots(); i < existing.size(); ++i) { QFile::remove(existing[i].absoluteFilePath()); }
+}
+
+
 // only save current song as filename and do nothing else
 void Song::reloadFromRewrittenFile(const QString& tempFile, const QString& realFileName)
 {
@@ -1268,6 +1489,21 @@ bool Song::saveProjectFile(const QString & filename, bool withResources)
 	}
 
 	saveControllerStates( dataFile, dataFile.content() );
+
+	// Custom: arrangement markers
+	if (!m_arrangementMarkers.empty())
+	{
+		QDomElement markersNode = dataFile.createElement("pthmarkers");
+		for (const auto& marker : m_arrangementMarkers)
+		{
+			QDomElement markerNode = dataFile.createElement("marker");
+			markerNode.setAttribute("pos", marker.tick);
+			markerNode.setAttribute("name", marker.name);
+			if (marker.color.isValid()) { markerNode.setAttribute("color", marker.color.name()); }
+			markersNode.appendChild(markerNode);
+		}
+		dataFile.content().appendChild(markersNode);
+	}
 
 	saveScaleStates(dataFile, dataFile.content());
 	saveKeymapStates(dataFile, dataFile.content());
@@ -1316,6 +1552,7 @@ bool Song::guiSaveProjectAs(const QString & filename)
 	{
 		setModified(false);
 		setProjectFileName(fileNameWithExtension);
+		createSnapshot(fileNameWithExtension); // Custom: automatic version
 	}
 
 	return saveResult;

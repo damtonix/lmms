@@ -88,6 +88,8 @@ public:
 	bool isCorrupted() const { return m_corrupted.load(std::memory_order_relaxed); }
 
 private:
+	void applyDucking(f_cnt_t fpp);
+
 	volatile bool m_bufferUsage;
 
 	AudioBuffer m_buffer;

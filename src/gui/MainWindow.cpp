@@ -34,8 +34,10 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QProgressDialog>
+#include <QPushButton>
 #include <QRegularExpression>
 #include <QShortcut>
+#include <QUrl>
 #include <QSplitter>
 
 #include "AboutDialog.h"
@@ -64,6 +66,8 @@
 #include "PluginView.h"
 #include "ProjectJournal.h"
 #include "ProjectFilesDialog.h"
+#include "SnapshotDialog.h"
+#include "StemExportDialog.h"
 #include "ProjectNotes.h"
 #include "ProjectRenderer.h"
 #include "RenderManager.h"
@@ -322,6 +326,10 @@ void MainWindow::finalize()
 	project_menu->addAction(embed::getIconPixmap("project_save"), tr("Save as default template"),
 		this, &MainWindow::saveProjectAsDefaultTemplate);
 
+	// Custom: automatic versions made on every save
+	project_menu->addAction(embed::getIconPixmap("project_open_recent"), tr("Snapshots (fr\xc3\xbchere Versionen)..."),
+		this, &MainWindow::showSnapshots);
+
 	project_menu->addSeparator();
 
 	project_menu->addAction(embed::getIconPixmap("project_import"), tr("Import..."),
@@ -339,6 +347,10 @@ void MainWindow::finalize()
 
 	addAction(project_menu, "project_export", tr("Export &Tracks..."),
 		keySequence(Qt::CTRL, Qt::SHIFT, Qt::Key_E), &MainWindow::onExportProjectTracks);
+
+	// Custom: one WAV per group / top-level track
+	project_menu->addAction(embed::getIconPixmap("project_export"), tr("Stems exportieren (pro Gruppe)..."),
+		this, &MainWindow::exportStems);
 
 	addAction(project_menu, "midi_file", tr("Export &MIDI..."),
 		keySequence(Qt::CTRL, Qt::Key_M), &MainWindow::onExportProjectMidi);
@@ -1761,28 +1773,51 @@ QString MainWindow::askWavFile(const QString& title, const QString& baseName)
 
 bool MainWindow::renderTrackSolo(Track* track, const QString& path, const QString& title, bool neutralMaster)
 {
+	return renderTracksSolo({track}, path, title, neutralMaster, false);
+}
+
+bool MainWindow::renderTracksSolo(const std::vector<Track*>& roots, const QString& path, const QString& title,
+	bool neutralMaster, bool betweenLoopMarkers)
+{
 	Song* song = Engine::getSong();
 
-	// Render only this track: mute every other audio track (automation keeps running),
-	// keep the parent group(s) audible and temporarily unfreeze the track
+	// Render only these tracks (with everything below them, e.g. group members): mute every other
+	// audio track (automation keeps running), keep the parent group(s) audible and temporarily
+	// unfreeze frozen tracks so their instruments play
 	const bool journalling = Engine::projectJournal()->isJournalling();
 	Engine::projectJournal()->setJournalling(false);
+	const bool propagation = Track::suspendMutePropagation(true);
+
+	const auto isBelow = [](const Track* t, const Track* root) {
+		int guard = 0;
+		for (auto p = t->parentTrack(); p != nullptr && guard < 8; p = p->parentTrack(), ++guard)
+		{
+			if (p == root) { return true; }
+		}
+		return false;
+	};
 	std::vector<std::pair<Track*, bool>> savedMutes;
-	std::vector<Track*> ancestors;
-	for (auto parent = track->parentTrack(); parent != nullptr && ancestors.size() < 8; parent = parent->parentTrack())
-	{
-		ancestors.push_back(parent);
-	}
+	std::vector<std::pair<Track*, bool>> savedFrozen;
 	for (auto other : song->tracks())
 	{
 		const auto type = other->type();
 		if (type == Track::Type::Automation || type == Track::Type::HiddenAutomation) { continue; }
 		savedMutes.emplace_back(other, other->isMutedSelf());
-		const bool audible = other == track || std::find(ancestors.begin(), ancestors.end(), other) != ancestors.end();
+		bool audible = false;
+		for (auto root : roots)
+		{
+			if (other == root) { audible = true; }
+			// members keep their own mute button (a muted member stays silent in the stem)
+			else if (isBelow(other, root)) { audible = audible || !other->isMutedSelf(); }
+			else if (isBelow(root, other)) { audible = true; } // parent group of the root
+		}
 		other->setMuted(!audible);
+		if (audible && other->isFrozen())
+		{
+			savedFrozen.emplace_back(other, true);
+			other->setFrozen(false);
+		}
 	}
-	const bool wasFrozen = track->isFrozen();
-	track->setFrozen(false);
 
 	// For freezing, the result is played through the master channel again:
 	// render without master effects and master volume so they are not applied twice
@@ -1797,7 +1832,7 @@ bool MainWindow::renderTrackSolo(Track* track, const QString& path, const QStrin
 		song->setMasterVolume(100);
 	}
 
-	const bool ok = renderToWav(path, false, title);
+	const bool ok = renderToWav(path, betweenLoopMarkers, title);
 
 	if (neutralMaster)
 	{
@@ -1805,10 +1840,60 @@ bool MainWindow::renderTrackSolo(Track* track, const QString& path, const QStrin
 		master->m_volumeModel.setValue(masterVolume);
 		song->setMasterVolume(songVolume);
 	}
-	track->setFrozen(wasFrozen);
+	for (const auto& [other, frozen] : savedFrozen) { other->setFrozen(frozen); }
 	for (const auto& [other, muted] : savedMutes) { other->setMuted(muted); }
+	Track::suspendMutePropagation(propagation);
 	Engine::projectJournal()->setJournalling(journalling);
 	return ok;
+}
+
+void MainWindow::showSnapshots()
+{
+	SnapshotDialog(this).exec();
+}
+
+void MainWindow::exportStems()
+{
+	StemExportDialog dialog(this);
+	if (dialog.exec() != QDialog::Accepted) { return; }
+	const auto stems = dialog.selectedStems();
+	if (stems.empty()) { return; }
+	const QString dir = dialog.targetDirectory();
+	QDir().mkpath(dir);
+
+	int done = 0;
+	QStringList failed;
+	Engine::getSong()->setExportFullLength(true);
+	for (std::size_t i = 0; i < stems.size(); ++i)
+	{
+		const auto& stem = stems[i];
+		QString name = QString("%1 %2").arg(i + 1, 2, 10, QChar('0')).arg(stem.name);
+		name.replace(QRegularExpression(FILENAME_FILTER), "_");
+		const QString path = QDir(dir).filePath(dialog.filePrefix() + name + ".wav");
+		const QString title = tr("Stems %1/%2: %3").arg(i + 1).arg(stems.size()).arg(stem.name);
+		if (!renderTracksSolo(stem.tracks, path, title, !dialog.withMasterEffects(), dialog.onlyLoop()))
+		{
+			if (!QFileInfo::exists(path))
+			{
+				// cancelled: stop the whole export
+				if (QMessageBox::question(this, tr("Stems exportieren"), tr("Export abbrechen?"))
+					== QMessageBox::Yes) { break; }
+				failed << stem.name;
+				continue;
+			}
+			failed << stem.name;
+			continue;
+		}
+		++done;
+	}
+	Engine::getSong()->setExportFullLength(false);
+
+	QString message = tr("%1 von %2 Stems wurden nach %3 exportiert.").arg(done).arg(stems.size()).arg(dir);
+	if (!failed.isEmpty()) { message += "\n\n" + tr("Nicht exportiert: %1").arg(failed.join(", ")); }
+	QMessageBox box(QMessageBox::Information, tr("Stems exportieren"), message, QMessageBox::Ok, this);
+	auto openButton = box.addButton(tr("Ordner \xc3\xb6\x66\x66nen"), QMessageBox::ActionRole);
+	box.exec();
+	if (box.clickedButton() == static_cast<QAbstractButton*>(openButton)) { QDesktopServices::openUrl(QUrl::fromLocalFile(dir)); }
 }
 
 void MainWindow::freezeTrack(Track* track)

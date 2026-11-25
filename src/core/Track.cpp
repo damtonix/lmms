@@ -210,6 +210,15 @@ void Track::saveTrack(QDomDocument& doc, QDomElement& element, bool presetMode)
 		if (m_frozen) { element.setAttribute("frozen", 1); }
 		if (m_mutedBeforeParent) { element.setAttribute("mutedbeforeparent", 1); }
 		if (!m_freezeProxyOf.isEmpty()) { element.setAttribute("freezeproxyof", m_freezeProxyOf); }
+		if (!(m_duck == DuckSettings{}))
+		{
+			element.setAttribute("duck", m_duck.enabled ? 1 : 0);
+			element.setAttribute("duckdepth", m_duck.depth);
+			element.setAttribute("duckhold", m_duck.holdMs);
+			element.setAttribute("duckrelease", m_duck.releaseMs);
+			element.setAttribute("duckrate", m_duck.rate);
+			element.setAttribute("duckshape", m_duck.shape);
+		}
 	}
 	
 	QDomElement tsDe = doc.createElement( nodeName() );
@@ -268,6 +277,17 @@ void Track::loadTrack(const QDomElement& element, bool presetMode)
 		setFrozen(element.attribute("frozen", "0").toInt() != 0);
 		m_mutedBeforeParent = element.attribute("mutedbeforeparent", "0").toInt() != 0;
 		m_freezeProxyOf = element.attribute("freezeproxyof");
+		DuckSettings duck;
+		if (element.hasAttribute("duck"))
+		{
+			duck.enabled = element.attribute("duck").toInt() != 0;
+			duck.depth = std::clamp(element.attribute("duckdepth", "0.8").toFloat(), 0.f, 1.f);
+			duck.holdMs = std::clamp(element.attribute("duckhold", "10").toFloat(), 0.f, 500.f);
+			duck.releaseMs = std::clamp(element.attribute("duckrelease", "160").toFloat(), 5.f, 2000.f);
+			duck.rate = std::clamp(element.attribute("duckrate", "0").toInt(), 0, 3);
+			duck.shape = std::clamp(element.attribute("duckshape", "0").toInt(), 0, 2);
+		}
+		setDuckSettings(duck);
 	}
 
 	if (presetMode)
@@ -660,6 +680,59 @@ Track* Track::freezeProxy() const
 		if (track->m_freezeProxyOf == m_uid) { return track; }
 	}
 	return nullptr;
+}
+
+
+
+
+void Track::setDuckSettings(const DuckSettings& settings)
+{
+	if (m_duck == settings) { return; }
+	m_duck = settings;
+	emit duckChanged();
+}
+
+std::optional<Track::DuckSettings> Track::effectiveDuck() const
+{
+	if (m_duck.enabled) { return m_duck; }
+	int guard = 0;
+	for (auto parent = parentTrack(); parent != nullptr && guard < 8; parent = parent->parentTrack(), ++guard)
+	{
+		if (parent->m_duck.enabled) { return parent->m_duck; }
+	}
+	return std::nullopt;
+}
+
+int Track::duckRateTicks(int rate)
+{
+	switch (rate)
+	{
+		case 1: return DefaultTicksPerBar / 8;
+		case 2: return DefaultTicksPerBar / 2;
+		case 3: return DefaultTicksPerBar / 16;
+		default: return DefaultTicksPerBar / 4;
+	}
+}
+
+float Track::duckGain(const DuckSettings& s, double ms)
+{
+	// amount of ducking: ramps in quickly (no click), holds, then releases
+	double amount;
+	if (ms < DuckAttackMs) { amount = ms / DuckAttackMs; }
+	else if (ms < DuckAttackMs + s.holdMs) { amount = 1.0; }
+	else
+	{
+		const double r = std::min(1.0, (ms - DuckAttackMs - s.holdMs) / std::max(1.f, s.releaseMs));
+		double recovered;
+		switch (s.shape)
+		{
+			case 1: recovered = r; break;                       // linear
+			case 2: recovered = r * r * r; break;               // pumping: stays down long, comes back late
+			default: recovered = r * r * (3.0 - 2.0 * r); break; // smooth S-curve
+		}
+		amount = 1.0 - recovered;
+	}
+	return static_cast<float>(1.0 - s.depth * amount);
 }
 
 

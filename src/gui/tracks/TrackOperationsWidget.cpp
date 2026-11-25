@@ -30,6 +30,7 @@
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPushButton>
 
 #include "AutomatableButton.h"
@@ -37,6 +38,7 @@
 #include "AutomationTrackView.h"
 #include "ColorChooser.h"
 #include "ConfigManager.h"
+#include "DuckDialog.h"
 #include "GroupTrack.h"
 #include "MainWindow.h"
 #include "GuiApplication.h"
@@ -122,6 +124,29 @@ void TrackOperationsWidget::paintEvent(QPaintEvent*)
 	QPainter p( this );
 
 	p.fillRect(rect(), palette().brush(QPalette::Window));
+
+	// Custom: small duck curve when the track (or its group) has Kick-Ducking
+	const auto track = m_trackView->getTrack();
+	if (const auto duck = track->effectiveDuck(); duck.has_value())
+	{
+		const bool own = track->duckSettings().enabled;
+		// pump wave in the free strip below the buttons
+		const qreal top = height() - 6.5, bottom = height() - 2.0;
+		const qreal left = 12, right = width() - 4;
+		const int waves = 5;
+		const qreal step = (right - left) / waves;
+		QPainterPath path;
+		for (int i = 0; i < waves; ++i)
+		{
+			const qreal x = left + i * step;
+			path.moveTo(x, top);
+			path.lineTo(x + 1, bottom);
+			path.quadTo(x + step * 0.45, bottom, x + step, top);
+		}
+		p.setRenderHint(QPainter::Antialiasing);
+		p.setPen(QPen(own ? QColor(143, 186, 230) : QColor(120, 140, 160, 150), 1.2));
+		p.drawPath(path);
+	}
 }
 
 
@@ -313,6 +338,18 @@ void TrackOperationsWidget::addGroupMenu(QMenu* toMenu)
 	}
 
 	if (!inSong) { return; }
+
+	// Custom: beat-synced ducking for tracks with audio and for groups
+	if (track->type() == Track::Type::Instrument || track->type() == Track::Type::Sample
+		|| track->type() == Track::Type::Group)
+	{
+		toMenu->addSeparator();
+		const bool on = track->duckSettings().enabled;
+		auto action = toMenu->addAction(on ? tr("Kick-Ducking... (aktiv)") : tr("Kick-Ducking..."),
+			this, [this, track] { DuckDialog::showFor(track, window()); });
+		action->setCheckable(true);
+		action->setChecked(on);
+	}
 	toMenu->addSeparator();
 
 	// Custom: automation tracks belonging to an instrument track

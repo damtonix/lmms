@@ -107,6 +107,34 @@ public:
 	const QString& freezeProxyOf() const { return m_freezeProxyOf; }
 	void setFreezeProxyOf(const QString& uid) { m_freezeProxyOf = uid; }
 	bool isFreezeProxy() const { return !m_freezeProxyOf.isEmpty(); }
+
+	//! Custom: beat-synced volume ducking ("Kick-Ducking"), on groups it applies to all members
+	struct DuckSettings
+	{
+		bool enabled = false;
+		float depth = 0.8f;       //!< 0..1, how far the volume goes down
+		float holdMs = 10.f;      //!< stays down this long after the beat
+		float releaseMs = 160.f;  //!< time to come back up
+		int rate = 0;             //!< 0 = 1/4, 1 = 1/8, 2 = 1/2, 3 = 1/16
+		int shape = 0;            //!< 0 = smooth, 1 = linear, 2 = pumping
+		bool operator==(const DuckSettings&) const = default;
+	};
+	const DuckSettings& duckSettings() const { return m_duck; }
+	void setDuckSettings(const DuckSettings& settings);
+	//! own ducking or the one of the nearest parent that has it enabled
+	std::optional<DuckSettings> effectiveDuck() const;
+	static int duckRateTicks(int rate);
+	//! gain (0..1) at the given time in ms after the start of a duck period
+	static float duckGain(const DuckSettings& settings, double msInPeriod);
+	static constexpr float DuckAttackMs = 2.f;
+
+	//! Custom: no mute propagation to children (used while rendering stems)
+	static bool suspendMutePropagation(bool suspend)
+	{
+		const bool previous = s_inSoloChange;
+		s_inSoloChange = suspend;
+		return previous;
+	}
 	//! The hidden sample track playing this (frozen) track's audio, or nullptr
 	Track* freezeProxy() const;
 	//! Any track of the same container with this uid
@@ -375,6 +403,7 @@ private:
 	bool m_collapsed = false;
 	bool m_frozen = false;
 	QString m_freezeProxyOf;
+	DuckSettings m_duck;
 	bool m_mutedBeforeParent = false; //!< Custom: own mute state before the parent was muted
 	static bool s_inSoloChange;       //!< Custom: no mute propagation while solo rearranges mutes
 
@@ -389,6 +418,7 @@ signals:
 	void groupChanged();
 	void collapsedChanged();
 	void frozenChanged();
+	void duckChanged();
 } ;
 
 
