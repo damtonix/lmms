@@ -21,22 +21,31 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPushButton>
+#include <QRegularExpression>
+#include <QSignalBlocker>
+#include <QTimer>
 #include <QSlider>
 #include <QVBoxLayout>
 
 #include "Engine.h"
+#include "PatternStore.h"
 #include "Song.h"
 #include "Track.h"
 
 namespace lmms::gui
 {
 
-//! Shows the volume over two duck periods at the current tempo
+//! Shows the volume over two grid periods, or one bar of the real kick hits
 class DuckCurveWidget : public QWidget
 {
 public:
-	explicit DuckCurveWidget(QWidget* parent) : QWidget(parent) { setMinimumSize(320, 90); }
-	void setSettings(const Track::DuckSettings& settings) { m_settings = settings; update(); }
+	explicit DuckCurveWidget(QWidget* parent) : QWidget(parent) { setMinimumSize(360, 100); }
+	void setSettings(const Track::DuckSettings& settings, bool useKick)
+	{
+		m_settings = settings;
+		m_useKick = useKick;
+		update();
+	}
 
 protected:
 	void paintEvent(QPaintEvent*) override
@@ -46,25 +55,76 @@ protected:
 		const QRectF r = QRectF(rect()).adjusted(6, 6, -6, -6);
 		p.fillRect(rect(), QColor(30, 33, 38));
 
-		const double bpm = Engine::getSong()->getTempo();
-		const double periodMs = Track::duckRateTicks(m_settings.rate) * 60000.0 / (bpm * DefaultTicksPerBar / 4.0);
-		constexpr int Periods = 2;
+		const auto song = Engine::getSong();
+		const double bpm = song->getTempo();
+		const double msPerTick = 60000.0 / (bpm * DefaultTicksPerBar / 4.0);
+		const auto map = song->kickMap();
+		const bool kick = m_useKick && map != nullptr && map->hasSource;
+
+		// what is shown: [from, from + span) in ticks
+		double from = 0;
+		double span = 0;
+		int divisions = 2;
+		std::vector<Song::KickHit> hits;
+		QString caption;
+		if (kick)
+		{
+			const double barTicks = TimePos::ticksPerBar();
+			span = barTicks;
+			divisions = 4;
+			const auto& all = map->song;
+			double bar = std::floor(song->getPlayPos(Song::PlayMode::Song).getTicks() / barTicks) * barTicks;
+			const auto firstFrom = [&all](double t) {
+				return std::lower_bound(all.begin(), all.end(), t,
+					[](const Song::KickHit& h, double v) { return h.tick < v; });
+			};
+			if (auto it = firstFrom(bar); it == all.end() || it->tick >= bar + barTicks)
+			{
+				if (it != all.end()) { bar = std::floor(it->tick / barTicks) * barTicks; }
+				else if (!all.empty()) { bar = std::floor(all.front().tick / barTicks) * barTicks; }
+			}
+			from = bar;
+			// include the hit before the bar (its release can reach into it)
+			auto it = firstFrom(from);
+			if (it != all.begin()) { --it; }
+			for (; it != all.end() && it->tick < from + span + 1; ++it) { hits.push_back(*it); }
+			caption = all.empty()
+				? DuckDialog::tr("Kick-Spur hat (noch) keine Schl\xc3\xa4ge im Song")
+				: DuckDialog::tr("Takt %1, echte Kick (%2 BPM)").arg(static_cast<int>(from / barTicks) + 1).arg(bpm);
+		}
+		else
+		{
+			const double period = Track::duckRateTicks(m_settings.rate);
+			span = period * 2;
+			for (int i = 0; i < 3; ++i) { hits.push_back({period * i, 1.f}); }
+			caption = DuckDialog::tr("%1 BPM, ein Abschnitt = %2 ms").arg(bpm).arg(qRound(period * msPerTick));
+		}
 
 		// beat lines
 		p.setPen(QColor(70, 76, 86));
-		for (int i = 0; i <= Periods; ++i)
+		for (int i = 0; i <= divisions; ++i)
 		{
-			const double x = r.left() + r.width() * i / Periods;
+			const double x = r.left() + r.width() * i / divisions;
 			p.drawLine(QPointF(x, r.top()), QPointF(x, r.bottom()));
 		}
 		p.drawLine(QPointF(r.left(), r.top()), QPointF(r.right(), r.top()));
 
+		const double attackTicks = Track::DuckAttackMs / msPerTick;
 		QPainterPath path;
 		const int steps = static_cast<int>(r.width());
 		for (int i = 0; i <= steps; ++i)
 		{
-			const double t = periodMs * Periods * i / steps;
-			const double gain = Track::duckGain(m_settings, std::fmod(t, periodMs));
+			const double t = from + span * i / steps;
+			double gain = 1.0;
+			for (auto h = hits.rbegin(); h != hits.rend(); ++h)
+			{
+				if (h->tick <= t + attackTicks)
+				{
+					gain = Track::duckGain(m_settings, (t - h->tick) * msPerTick + Track::DuckAttackMs,
+						m_settings.followVelocity ? h->strength : 1.f);
+					break;
+				}
+			}
 			const QPointF pt(r.left() + i, r.bottom() - gain * r.height());
 			if (i == 0) { path.moveTo(pt); } else { path.lineTo(pt); }
 		}
@@ -79,16 +139,28 @@ protected:
 		p.setPen(QPen(color, 2));
 		p.drawPath(path);
 
+		if (kick)
+		{
+			// the hits themselves, height = strength
+			p.setPen(QPen(QColor(230, 160, 90), 2));
+			for (const auto& h : hits)
+			{
+				if (h.tick < from || h.tick >= from + span) { continue; }
+				const double x = r.left() + r.width() * (h.tick - from) / span;
+				p.drawLine(QPointF(x, r.top()), QPointF(x, r.top() + 4 + 10 * h.strength));
+			}
+		}
+
 		p.setPen(QColor(150, 156, 164));
 		QFont f = font();
 		f.setPointSizeF(std::max(7.0, f.pointSizeF() * 0.85));
 		p.setFont(f);
-		p.drawText(r.adjusted(4, 2, -4, -2), Qt::AlignRight | Qt::AlignBottom,
-			DuckDialog::tr("%1 BPM, ein Abschnitt = %2 ms").arg(bpm).arg(qRound(periodMs)));
+		p.drawText(r.adjusted(4, 2, -4, -2), Qt::AlignRight | Qt::AlignBottom, caption);
 	}
 
 private:
 	Track::DuckSettings m_settings;
+	bool m_useKick = false;
 };
 
 
@@ -139,6 +211,22 @@ DuckDialog::DuckDialog(Track* track, QWidget* parent)
 	addSlider(tr("Halten"), 0, 200, qRound(settings.holdMs), m_hold, m_holdLabel);
 	addSlider(tr("Release"), 10, 1000, qRound(settings.releaseMs), m_release, m_releaseLabel);
 
+	grid->addWidget(new QLabel(tr("Ausl\xc3\xb6ser"), this), row, 0);
+	m_source = new QComboBox(this);
+	m_source->addItems({tr("Echte Kick (Schl\xc3\xa4ge der Kick-Spur)"), tr("Festes Raster")});
+	m_source->setCurrentIndex(settings.source);
+	grid->addWidget(m_source, row++, 1, 1, 2);
+
+	grid->addWidget(new QLabel(tr("Kick-Spur"), this), row, 0);
+	m_kickTrack = new QComboBox(this);
+	grid->addWidget(m_kickTrack, row++, 1, 1, 2);
+	m_kickInfo = new QLabel(this);
+	m_kickInfo->setWordWrap(true);
+	grid->addWidget(m_kickInfo, row++, 1, 1, 2);
+	m_velocity = new QCheckBox(tr("Leisere Kick-Schl\xc3\xa4ge ducken weniger"), this);
+	m_velocity->setChecked(settings.followVelocity);
+	grid->addWidget(m_velocity, row++, 1, 1, 2);
+
 	grid->addWidget(new QLabel(tr("Rhythmus"), this), row, 0);
 	m_rate = new QComboBox(this);
 	m_rate->addItems({tr("1/4 (jeder Kick)"), tr("1/8"), tr("1/2"), tr("1/16")});
@@ -162,6 +250,8 @@ DuckDialog::DuckDialog(Track* track, QWidget* parent)
 	connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::close);
 	connect(reset, &QPushButton::clicked, this, [this] {
 		const Track::DuckSettings defaults;
+		m_source->setCurrentIndex(defaults.source);
+		m_velocity->setChecked(defaults.followVelocity);
 		m_depth->setValue(qRound(defaults.depth * 100));
 		m_hold->setValue(qRound(defaults.holdMs));
 		m_release->setValue(qRound(defaults.releaseMs));
@@ -176,10 +266,119 @@ DuckDialog::DuckDialog(Track* track, QWidget* parent)
 	}
 	connect(m_rate, qOverload<int>(&QComboBox::currentIndexChanged), this, &DuckDialog::apply);
 	connect(m_shape, qOverload<int>(&QComboBox::currentIndexChanged), this, &DuckDialog::apply);
+	connect(m_source, qOverload<int>(&QComboBox::currentIndexChanged), this, &DuckDialog::apply);
+	connect(m_velocity, &QCheckBox::toggled, this, &DuckDialog::apply);
+	connect(m_kickTrack, qOverload<int>(&QComboBox::activated), this, &DuckDialog::chooseKickTrack);
+
+	// follow the play position and edits of the kick
+	auto refresh = new QTimer(this);
+	refresh->setInterval(300);
+	connect(refresh, &QTimer::timeout, m_curve, qOverload<>(&QWidget::update));
+	refresh->start();
 	connect(track, &Track::destroyedTrack, this, &QDialog::close);
 
+	autoDetectKick();
+	fillKickTracks();
 	updateLabels();
-	m_curve->setSettings(settings);
+	m_curve->setSettings(settings, settings.source == 0);
+}
+
+
+QList<Track*> DuckDialog::kickCandidates() const
+{
+	QList<Track*> result;
+	for (const auto track : Engine::getSong()->tracks())
+	{
+		if (track->type() == Track::Type::Instrument || track->type() == Track::Type::Sample) { result.push_back(track); }
+	}
+	for (const auto track : Engine::patternStore()->tracks())
+	{
+		if (track->type() == Track::Type::Instrument) { result.push_back(track); }
+	}
+	return result;
+}
+
+
+void DuckDialog::autoDetectKick()
+{
+	m_autoDetected.clear();
+	const auto candidates = kickCandidates();
+	for (const auto track : candidates)
+	{
+		if (track->isKickSource()) { return; }
+	}
+	static const QRegularExpression kickName(QStringLiteral("kick|bassdrum|bass drum|\\bbd\\b|\\bkik\\b"),
+		QRegularExpression::CaseInsensitiveOption);
+	for (const auto track : candidates)
+	{
+		if (track != m_track.data() && kickName.match(track->name()).hasMatch())
+		{
+			track->setKickSource(true);
+			Engine::getSong()->setModified();
+			Engine::getSong()->updateKickMap();
+			m_autoDetected = track->name();
+			return;
+		}
+	}
+}
+
+
+void DuckDialog::fillKickTracks()
+{
+	const QSignalBlocker blocker(m_kickTrack);
+	m_kickTrack->clear();
+	m_kickTrack->addItem(tr("(keine festgelegt)"));
+	QStringList marked;
+	int current = 0;
+	for (const auto track : kickCandidates())
+	{
+		const bool inPattern = track->trackContainer() == Engine::patternStore();
+		const QString name = inPattern ? tr("%1 (Pattern-Editor)").arg(track->name()) : track->name();
+		m_kickTrack->addItem(name, QVariant::fromValue<void*>(track));
+		if (track->isKickSource())
+		{
+			marked << name;
+			current = m_kickTrack->count() - 1;
+		}
+	}
+	if (marked.size() > 1)
+	{
+		m_kickTrack->insertItem(1, tr("Mehrere: %1").arg(marked.join(", ")), QVariant::fromValue<void*>(nullptr));
+		current = 1;
+	}
+	m_kickTrack->setCurrentIndex(current);
+
+	if (marked.isEmpty())
+	{
+		m_kickInfo->setText(tr("Noch keine Kick-Spur: hier ausw\xc3\xa4hlen (oder Zahnrad-Men\xc3\xbc der Kick \xe2\x86\x92 "
+			"\"Als Kick-Quelle\"). Bis dahin wird das feste Raster benutzt."));
+	}
+	else if (!m_autoDetected.isEmpty())
+	{
+		m_kickInfo->setText(tr("\"%1\" wurde am Namen als Kick erkannt, bitte pr\xc3\xbc" "fen.").arg(m_autoDetected));
+	}
+	else
+	{
+		m_kickInfo->setText(tr("Reagiert auf jeden Schlag dieser Spur, auch Rolls, Breaks und versetzte Kicks."));
+	}
+}
+
+
+void DuckDialog::chooseKickTrack(int index)
+{
+	if (index < 0) { return; }
+	const auto chosen = static_cast<Track*>(m_kickTrack->itemData(index).value<void*>());
+	if (chosen == nullptr && index != 0) { return; } // "Mehrere": keep as it is
+	for (const auto track : kickCandidates())
+	{
+		track->setKickSource(track == chosen);
+	}
+	m_autoDetected.clear();
+	Engine::getSong()->setModified();
+	Engine::getSong()->updateKickMap();
+	fillKickTracks();
+	updateLabels();
+	m_curve->update();
 }
 
 
@@ -188,10 +387,18 @@ void DuckDialog::updateLabels()
 	m_depthLabel->setText(QString("%1 %").arg(m_depth->value()));
 	m_holdLabel->setText(QString("%1 ms").arg(m_hold->value()));
 	m_releaseLabel->setText(QString("%1 ms").arg(m_release->value()));
-	for (auto w : std::initializer_list<QWidget*>{m_depth, m_hold, m_release, m_rate, m_shape})
+	const bool on = m_enabled->isChecked();
+	for (auto w : std::initializer_list<QWidget*>{m_depth, m_hold, m_release, m_shape, m_source})
 	{
-		w->setEnabled(m_enabled->isChecked());
+		w->setEnabled(on);
 	}
+	const bool kick = m_source->currentIndex() == 0;
+	const auto map = Engine::getSong()->kickMap();
+	const bool hasKick = map != nullptr && map->hasSource;
+	m_kickTrack->setEnabled(on && kick);
+	m_kickInfo->setEnabled(on && kick);
+	m_velocity->setEnabled(on && kick && hasKick);
+	m_rate->setEnabled(on && (!kick || !hasKick));
 }
 
 
@@ -205,7 +412,9 @@ void DuckDialog::apply()
 	settings.releaseMs = static_cast<float>(m_release->value());
 	settings.rate = m_rate->currentIndex();
 	settings.shape = m_shape->currentIndex();
-	m_curve->setSettings(settings);
+	settings.source = m_source->currentIndex();
+	settings.followVelocity = m_velocity->isChecked();
+	m_curve->setSettings(settings, settings.source == 0);
 	if (m_track.isNull()) { return; }
 	if (!(m_track->duckSettings() == settings))
 	{

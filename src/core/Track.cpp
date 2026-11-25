@@ -218,7 +218,10 @@ void Track::saveTrack(QDomDocument& doc, QDomElement& element, bool presetMode)
 			element.setAttribute("duckrelease", m_duck.releaseMs);
 			element.setAttribute("duckrate", m_duck.rate);
 			element.setAttribute("duckshape", m_duck.shape);
+			element.setAttribute("ducksource", m_duck.source);
+			element.setAttribute("duckvelocity", m_duck.followVelocity ? 1 : 0);
 		}
+		if (m_kickSource) { element.setAttribute("kicksource", 1); }
 	}
 	
 	QDomElement tsDe = doc.createElement( nodeName() );
@@ -286,8 +289,11 @@ void Track::loadTrack(const QDomElement& element, bool presetMode)
 			duck.releaseMs = std::clamp(element.attribute("duckrelease", "160").toFloat(), 5.f, 2000.f);
 			duck.rate = std::clamp(element.attribute("duckrate", "0").toInt(), 0, 3);
 			duck.shape = std::clamp(element.attribute("duckshape", "0").toInt(), 0, 2);
+			duck.source = std::clamp(element.attribute("ducksource", "0").toInt(), 0, 1);
+			duck.followVelocity = element.attribute("duckvelocity", "1").toInt() != 0;
 		}
 		setDuckSettings(duck);
+		setKickSource(element.attribute("kicksource", "0").toInt() != 0);
 	}
 
 	if (presetMode)
@@ -714,7 +720,14 @@ int Track::duckRateTicks(int rate)
 	}
 }
 
-float Track::duckGain(const DuckSettings& s, double ms)
+void Track::setKickSource(bool on)
+{
+	if (m_kickSource == on) { return; }
+	m_kickSource = on;
+	emit duckChanged();
+}
+
+float Track::duckGain(const DuckSettings& s, double ms, float strength)
 {
 	// amount of ducking: ramps in quickly (no click), holds, then releases
 	double amount;
@@ -732,7 +745,7 @@ float Track::duckGain(const DuckSettings& s, double ms)
 		}
 		amount = 1.0 - recovered;
 	}
-	return static_cast<float>(1.0 - s.depth * amount);
+	return static_cast<float>(1.0 - s.depth * strength * amount);
 }
 
 

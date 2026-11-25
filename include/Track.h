@@ -117,6 +117,8 @@ public:
 		float releaseMs = 160.f;  //!< time to come back up
 		int rate = 0;             //!< 0 = 1/4, 1 = 1/8, 2 = 1/2, 3 = 1/16
 		int shape = 0;            //!< 0 = smooth, 1 = linear, 2 = pumping
+		int source = 0;           //!< 0 = real hits of the kick track(s), 1 = fixed grid (rate)
+		bool followVelocity = true; //!< quieter kick notes duck less
 		bool operator==(const DuckSettings&) const = default;
 	};
 	const DuckSettings& duckSettings() const { return m_duck; }
@@ -125,7 +127,10 @@ public:
 	std::optional<DuckSettings> effectiveDuck() const;
 	static int duckRateTicks(int rate);
 	//! gain (0..1) at the given time in ms after the start of a duck period
-	static float duckGain(const DuckSettings& settings, double msInPeriod);
+	static float duckGain(const DuckSettings& settings, double msInPeriod, float strength = 1.f);
+	//! Custom: this track is a trigger ("Kick-Spur") for Kick-Ducking
+	bool isKickSource() const { return m_kickSource; }
+	void setKickSource(bool on);
 	static constexpr float DuckAttackMs = 2.f;
 
 	//! Custom: no mute propagation to children (used while rendering stems)
@@ -404,6 +409,7 @@ private:
 	bool m_frozen = false;
 	QString m_freezeProxyOf;
 	DuckSettings m_duck;
+	bool m_kickSource = false;
 	bool m_mutedBeforeParent = false; //!< Custom: own mute state before the parent was muted
 	static bool s_inSoloChange;       //!< Custom: no mute propagation while solo rearranges mutes
 

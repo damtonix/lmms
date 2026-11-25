@@ -32,6 +32,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QRegularExpression>
+#include <QThread>
 #include <QMessageBox>
 
 #include <algorithm>
@@ -119,6 +120,12 @@ Song::Song() :
 
 	qRegisterMetaType<lmms::Note>( "lmms::Note" );
 	setType( Type::Song );
+
+	// Custom: keep the kick hits for Kick-Ducking up to date (cheap, only kick tracks are scanned)
+	m_kickMapTimer = new QTimer(this);
+	m_kickMapTimer->setInterval(250);
+	connect(m_kickMapTimer, &QTimer::timeout, this, &Song::updateKickMap);
+	m_kickMapTimer->start();
 
 	for (auto& scale : m_scales) {scale = std::make_shared<Scale>();}
 	for (auto& keymap : m_keymaps) {keymap = std::make_shared<Keymap>();}
@@ -278,6 +285,11 @@ void Song::processNextBuffer()
 	m_periodStartTick.store(getPlayPos().getTicks() + timeline.frameOffset() / static_cast<double>(framesPerTick),
 		std::memory_order_relaxed);
 	m_periodPlaying.store(true, std::memory_order_relaxed);
+	{
+		// the audio bus handles of this period read m_periodKickMap after this function
+		std::lock_guard<std::mutex> lock(m_kickMapMutex);
+		m_periodKickMap = m_kickMap;
+	}
 
 	f_cnt_t frameOffsetInPeriod = 0;
 
@@ -522,6 +534,7 @@ void Song::playSong()
 	}
 
 	m_playMode = PlayMode::Song;
+	updateKickMap();
 	m_playing = true;
 	m_paused = false;
 
@@ -561,6 +574,7 @@ void Song::playPattern()
 	}
 
 	m_playMode = PlayMode::Pattern;
+	updateKickMap();
 	m_playing = true;
 	m_paused = false;
 
@@ -735,6 +749,7 @@ void Song::startExport()
 
 	m_exporting = true;
 	updateLength();
+	if (QThread::currentThread() == thread()) { updateKickMap(); }
 
 	auto& timeline = getTimeline(PlayMode::Song);
 
@@ -1240,6 +1255,7 @@ void Song::loadProject( const QString & fileName )
 
 	m_loadingProject = false;
 	updateLength();
+	updateKickMap();
 	setModified(false);
 	m_loadOnLaunch = false;
 }

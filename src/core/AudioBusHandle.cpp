@@ -36,6 +36,7 @@
 #include "Mixer.h"
 #include "Engine.h"
 #include "MixHelpers.h"
+#include "PatternStore.h"
 #include "Song.h"
 
 #include <cmath>
@@ -259,7 +260,7 @@ void AudioBusHandle::doProcessing()
 
 void AudioBusHandle::applyDucking(f_cnt_t fpp)
 {
-	// Custom: beat-synced "Kick-Ducking" after the track effects
+	// Custom: "Kick-Ducking" after the track effects, on the real kick hits or on a fixed grid
 	if (m_track == nullptr) { return; }
 	const auto song = Engine::getSong();
 	if (song == nullptr || !song->periodPlaying()) { return; }
@@ -268,10 +269,63 @@ void AudioBusHandle::applyDucking(f_cnt_t fpp)
 
 	const double framesPerTick = Engine::framesPerTick();
 	const double msPerFrame = 1000.0 / Engine::audioEngine()->outputSampleRate();
-	const double periodFrames = Track::duckRateTicks(duck->rate) * framesPerTick;
-	const double startFrame = song->periodStartTick() * framesPerTick;
+	const double startTick = song->periodStartTick();
 	auto left = m_buffer.buffer(0);
 	auto right = m_buffer.buffer(1);
+
+	const auto map = song->periodKickMap();
+	if (duck->source == 0 && map != nullptr && map->hasSource)
+	{
+		// the kick never ducks itself (e.g. when it sits in a ducked group)
+		if (m_track->isKickSource()) { return; }
+		const std::vector<Song::KickHit>* hits = nullptr;
+		double wrap = 0.0;
+		if (song->playMode() == Song::PlayMode::Song) { hits = &map->song; }
+		else if (song->playMode() == Song::PlayMode::Pattern)
+		{
+			const int index = Engine::patternStore()->currentPattern();
+			if (index >= 0 && index < static_cast<int>(map->patterns.size()))
+			{
+				hits = &map->patterns[index];
+				wrap = map->patternLength[index];
+			}
+		}
+		if (hits == nullptr || hits->empty()) { return; }
+
+		const double msPerTick = msPerFrame * framesPerTick;
+		// the volume is fully down exactly on the hit: the short attack starts a bit earlier
+		const double attackTicks = Track::DuckAttackMs / msPerTick;
+		const auto lastHitBefore = [hits](double tick) {
+			const auto it = std::upper_bound(hits->begin(), hits->end(), tick,
+				[](double t, const Song::KickHit& hit) { return t < hit.tick; });
+			return static_cast<long>(it - hits->begin()) - 1;
+		};
+		double previous = -1e300;
+		long index = -1;
+		for (f_cnt_t f = 0; f < fpp; ++f)
+		{
+			double tick = startTick + f / framesPerTick;
+			if (wrap > 0.0) { tick = std::fmod(tick, wrap); }
+			const double ahead = tick + attackTicks;
+			if (ahead < previous) { index = lastHitBefore(ahead); }
+			else if (f == 0) { index = lastHitBefore(ahead); }
+			else
+			{
+				while (index + 1 < static_cast<long>(hits->size()) && (*hits)[index + 1].tick <= ahead) { ++index; }
+			}
+			previous = ahead;
+			if (index < 0) { continue; }
+			const auto& hit = (*hits)[index];
+			const double ms = (tick - hit.tick) * msPerTick + Track::DuckAttackMs;
+			const float gain = Track::duckGain(*duck, ms, duck->followVelocity ? hit.strength : 1.f);
+			left[f] *= gain;
+			right[f] *= gain;
+		}
+		return;
+	}
+
+	const double periodFrames = Track::duckRateTicks(duck->rate) * framesPerTick;
+	const double startFrame = startTick * framesPerTick;
 	for (f_cnt_t f = 0; f < fpp; ++f)
 	{
 		const double inPeriod = std::fmod(startFrame + f, periodFrames);

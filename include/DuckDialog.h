@@ -13,6 +13,7 @@
 #define LMMS_GUI_DUCK_DIALOG_H
 
 #include <QDialog>
+#include <QList>
 #include <QPointer>
 
 class QCheckBox;
@@ -40,6 +41,10 @@ private:
 	DuckDialog(Track* track, QWidget* parent);
 	void apply();
 	void updateLabels();
+	QList<Track*> kickCandidates() const;
+	void autoDetectKick();
+	void fillKickTracks();
+	void chooseKickTrack(int index);
 
 	QPointer<Track> m_track;
 	QCheckBox* m_enabled;
@@ -48,6 +53,11 @@ private:
 	QSlider* m_release;
 	QComboBox* m_rate;
 	QComboBox* m_shape;
+	QComboBox* m_source;
+	QComboBox* m_kickTrack;
+	QLabel* m_kickInfo;
+	QCheckBox* m_velocity;
+	QString m_autoDetected;
 	QLabel* m_depthLabel;
 	QLabel* m_holdLabel;
 	QLabel* m_releaseLabel;

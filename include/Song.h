@@ -28,10 +28,12 @@
 #include <array>
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 #include <QColor>
 #include <QString>
+#include <QTimer>
 #include <QHash>  // IWYU pragma: keep
 
 #include "AudioEngine.h"
@@ -264,6 +266,27 @@ public:
 	double periodStartTick() const { return m_periodStartTick.load(std::memory_order_relaxed); }
 	bool periodPlaying() const { return m_periodPlaying.load(std::memory_order_relaxed); }
 
+	//! Custom: the real hits of the kick track(s) for Kick-Ducking, rebuilt in the main thread
+	struct KickHit
+	{
+		double tick;
+		float strength; //!< 0..1
+		bool operator==(const KickHit&) const = default;
+	};
+	struct KickMap
+	{
+		bool hasSource = false;            //!< at least one track is marked as kick
+		std::vector<KickHit> song;         //!< in song ticks, sorted
+		std::vector<std::vector<KickHit>> patterns; //!< per pattern, in pattern ticks, repeated before/after
+		std::vector<double> patternLength; //!< ticks
+		bool operator==(const KickMap&) const = default;
+	};
+	//! map valid for the period that is rendered right now (audio threads), may be null
+	const KickMap* periodKickMap() const { return m_periodKickMap.get(); }
+	std::shared_ptr<const KickMap> kickMap() const;
+	//! recompute the kick hits from the notes / samples of all kick tracks (main thread)
+	void updateKickMap();
+
 	//! Custom: named arrangement markers; a section runs from a marker to the next one
 	struct ArrangementMarker
 	{
@@ -472,6 +495,10 @@ private:
 	std::atomic<double> m_periodStartTick{0.0}; //!< Custom: song position at the start of the current period
 	std::atomic<bool> m_periodPlaying{false};
 	bool m_exportFullLength = false; //!< Custom: stems all get the full song length
+	std::shared_ptr<const KickMap> m_kickMap;       //!< Custom: latest kick map (guarded by m_kickMapMutex)
+	std::shared_ptr<const KickMap> m_periodKickMap; //!< copy for the current period (audio thread)
+	mutable std::mutex m_kickMapMutex;
+	QTimer* m_kickMapTimer = nullptr;
 	volatile bool m_paused;
 
 	bool m_savingProject;

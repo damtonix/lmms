@@ -78,6 +78,7 @@ set(LMMS_SRCS
 	core/LmmsSemaphore.cpp
 	core/SerializingObject.cpp
 	core/Song.cpp
+	core/SongKickMap.cpp
 	core/TempoSyncKnobModel.cpp
 	core/ThreadPool.cpp
 	core/Timeline.cpp

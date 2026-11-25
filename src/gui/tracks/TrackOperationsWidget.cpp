@@ -147,6 +147,20 @@ void TrackOperationsWidget::paintEvent(QPaintEvent*)
 		p.setPen(QPen(own ? QColor(143, 186, 230) : QColor(120, 140, 160, 150), 1.2));
 		p.drawPath(path);
 	}
+	else if (track->isKickSource())
+	{
+		// kick source: a few short impulses
+		const qreal bottom = height() - 2.0, left = 12;
+		p.setRenderHint(QPainter::Antialiasing);
+		p.setPen(QPen(QColor(230, 160, 90), 1.4));
+		const qreal step = (width() - 4 - left) / 5;
+		for (int i = 0; i < 5; ++i)
+		{
+			const qreal x = left + i * step + 1;
+			p.drawLine(QPointF(x, bottom), QPointF(x, bottom - 5));
+			p.drawLine(QPointF(x, bottom), QPointF(x + step * 0.6, bottom));
+		}
+	}
 }
 
 
@@ -335,6 +349,18 @@ void TrackOperationsWidget::addGroupMenu(QMenu* toMenu)
 	{
 		toMenu->addAction(embed::getIconPixmap("bounce", 16, 16), tr("Bounce als Sample-Spur..."),
 			this, [track] { getGUI()->mainWindow()->bounceTrack(track); });
+	}
+
+	// Custom: this track triggers Kick-Ducking
+	if (track->type() == Track::Type::Instrument || track->type() == Track::Type::Sample)
+	{
+		auto kick = toMenu->addAction(tr("Als Kick-Quelle f\xc3\xbcr Ducking"), this, [track] {
+			track->setKickSource(!track->isKickSource());
+			Engine::getSong()->setModified();
+			Engine::getSong()->updateKickMap();
+		});
+		kick->setCheckable(true);
+		kick->setChecked(track->isKickSource());
 	}
 
 	if (!inSong) { return; }
