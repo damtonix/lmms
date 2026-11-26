@@ -76,6 +76,27 @@ Clip::Clip(const Clip& other):
 }
 
 
+void Clip::setLinkId(const QString& id)
+{
+	if (m_linkId == id) { return; }
+	m_linkId = id;
+	if (auto song = Engine::getSong(); song != nullptr && !id.isEmpty())
+	{
+		connect(this, &Model::dataChanged, song, &Song::scheduleLinkSync, Qt::UniqueConnection);
+		song->scheduleLinkSync();
+	}
+	emit dataChanged();
+}
+
+
+int Clip::linkGroupSize() const
+{
+	if (m_linkId.isEmpty()) { return 1; }
+	const auto song = Engine::getSong();
+	return song != nullptr ? std::max(1, song->linkGroupSize(m_linkId)) : 1;
+}
+
+
 Clip::~Clip()
 {
 	emit destroyedClip();

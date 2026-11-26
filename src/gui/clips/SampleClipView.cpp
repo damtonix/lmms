@@ -299,6 +299,7 @@ void SampleClipView::paintEvent( QPaintEvent * pe )
 
 	QString name = PathUtil::cleanName(m_clip->m_sample.sampleFile());
 	paintTextLabel(name, p);
+	paintLinkMarker(p);
 
 	// disable antialiasing for borders, since its not needed
 	p.setRenderHint( QPainter::Antialiasing, false );

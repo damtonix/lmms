@@ -260,6 +260,17 @@ protected:
 	DataFile createClipDataFiles(const QVector<ClipView *> & clips) const;
 
 	virtual void paintTextLabel(QString const & text, QPainter & painter);
+	//! Custom: chain symbol in the top right corner of linked clips
+	void paintLinkMarker(QPainter& painter);
+	void selectLinkedClips();
+
+public:
+	//! Custom: removes the clip without an own undo step (the caller made one)
+	void removeWithoutJournal();
+	//! Custom: moves the given clips into the drafts folder of their tracks
+	static void moveToDrafts(const QVector<ClipView*>& clipViews);
+
+protected:
 	//! Custom: color of the group the track belongs to, if any
 	std::optional<QColor> groupColor() const;
 

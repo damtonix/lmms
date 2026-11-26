@@ -113,6 +113,13 @@ public:
 	}
 
 	auto color() const -> const std::optional<QColor>& { return m_color; }
+
+	//! Custom: linked clips (Ctrl+Shift+drag) share their content; empty = not linked
+	const QString& linkId() const { return m_linkId; }
+	void setLinkId(const QString& id);
+	bool isLinked() const { return !m_linkId.isEmpty(); }
+	//! number of clips in the song with the same link id (1 = alone)
+	int linkGroupSize() const;
 	void setColor(const std::optional<QColor>& color);
 
 	//! @brief Move this Clip's position in time
@@ -173,6 +180,7 @@ protected:
 private:
 	Track * m_track;
 	QString m_name;
+	QString m_linkId; //!< not copied by the copy constructor: a clone is independent
 
 	TimePos m_startPosition;
 	TimePos m_length;

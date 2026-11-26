@@ -416,6 +416,7 @@ void AutomationClipView::paintEvent( QPaintEvent * )
 
 	// clip name
 	paintTextLabel(m_clip->name(), p);
+	paintLinkMarker(p);
 
 	// inner border
 	p.setPen( c.lighter( current ? 160 : 130 ) );

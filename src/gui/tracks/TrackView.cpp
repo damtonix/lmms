@@ -131,6 +131,13 @@ TrackView::TrackView(Track* track, TrackContainerView* tcv)
 		createClipView(clip);
 	}
 
+	// Custom: drafts folder for tracks with clips in the song editor
+	if (!tcv->fixedClips() && m_track->type() != Track::Type::Group
+		&& m_track->type() != Track::Type::HiddenAutomation && !m_track->isFreezeProxy())
+	{
+		m_trackContentWidget.createDrafts();
+	}
+
 	m_trackContainerView->addTrackView( this );
 
 	// Custom: apply the group indent / frozen state once the derived view has created its widgets

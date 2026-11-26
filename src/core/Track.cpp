@@ -29,6 +29,8 @@
 
 #include "Track.h"
 
+#include <QTextStream>
+
 #include <QDomElement>
 #include <QUuid>
 #include <QVariant>
@@ -173,6 +175,11 @@ Track* Track::clone()
 	QDomElement parent = doc.createElement("clonedtrack");
 	cloneState(doc, parent);
 	Track* t = create(parent.firstChild().toElement(), m_trackContainer);
+	// Custom: the clips of a cloned track are independent copies
+	if (t != nullptr)
+	{
+		for (const auto clip : t->getClips()) { clip->setLinkId(QString()); }
+	}
 
 	AutomationClip::resolveAllIDs();
 	return t;
@@ -243,6 +250,19 @@ void Track::saveTrack(QDomDocument& doc, QDomElement& element, bool presetMode)
 	for (const auto& clip : m_clips)
 	{
 		clip->saveState(doc, element);
+	}
+
+	// Custom: drafts (metadata, so older versions skip them instead of creating clips)
+	if (!m_drafts.isEmpty())
+	{
+		QDomElement draftsElement = doc.createElement("pthdrafts");
+		draftsElement.setAttribute("metadata", 1);
+		for (const auto& xml : m_drafts)
+		{
+			QDomDocument draftDoc;
+			if (draftDoc.setContent(xml)) { draftsElement.appendChild(doc.importNode(draftDoc.documentElement(), true)); }
+		}
+		element.appendChild(draftsElement);
 	}
 }
 
@@ -326,6 +346,8 @@ void Track::loadTrack(const QDomElement& element, bool presetMode)
 		auto guard = Engine::audioEngine()->requestChangesGuard();
 		deleteClips();
 	}
+	const bool hadDrafts = !m_drafts.isEmpty();
+	m_drafts.clear();
 
 	QDomNode node = element.firstChild();
 	while( !node.isNull() )
@@ -335,6 +357,16 @@ void Track::loadTrack(const QDomElement& element, bool presetMode)
 			if( node.nodeName() == nodeName() )
 			{
 				loadTrackSpecificSettings( node.toElement() );
+			}
+			else if (node.nodeName() == "pthdrafts")
+			{
+				for (auto draft = node.firstChildElement(); !draft.isNull(); draft = draft.nextSiblingElement())
+				{
+					QString xml;
+					QTextStream stream(&xml);
+					draft.save(stream, -1);
+					m_drafts << xml;
+				}
 			}
 			else if( node.nodeName() != "muted"
 			&& node.nodeName() != "solo"
@@ -347,6 +379,8 @@ void Track::loadTrack(const QDomElement& element, bool presetMode)
 		}
 		node = node.nextSibling();
 	}
+
+	if (hadDrafts || !m_drafts.isEmpty()) { emit draftsChanged(); }
 
 	int storedHeight = element.attribute( "trackheight" ).toInt();
 	if( storedHeight >= MINIMAL_TRACK_HEIGHT )
@@ -728,6 +762,54 @@ int Track::duckRateTicks(int rate)
 		case 3: return DefaultTicksPerBar / 16;
 		default: return DefaultTicksPerBar / 4;
 	}
+}
+
+void Track::addDraft(const Clip* clip)
+{
+	QDomDocument doc;
+	QDomElement root = doc.createElement("draft");
+	doc.appendChild(root);
+	const_cast<Clip*>(clip)->saveState(doc, root);
+	QDomElement element = root.firstChildElement();
+	if (element.isNull()) { return; }
+	// a draft is independent: no link, no journal id
+	element.removeAttribute("link");
+	for (auto child = element.firstChildElement("journallingObject"); !child.isNull();
+		child = element.firstChildElement("journallingObject"))
+	{
+		element.removeChild(child);
+	}
+	QString xml;
+	QTextStream stream(&xml);
+	element.save(stream, -1);
+	addDraftXml(xml);
+}
+
+void Track::addDraftXml(const QString& xml)
+{
+	m_drafts << xml;
+	emit draftsChanged();
+}
+
+void Track::removeDraft(int index)
+{
+	if (index < 0 || index >= m_drafts.size()) { return; }
+	m_drafts.removeAt(index);
+	emit draftsChanged();
+}
+
+Clip* Track::createClipFromDraft(int index, TimePos pos)
+{
+	if (index < 0 || index >= m_drafts.size()) { return nullptr; }
+	QDomDocument doc;
+	if (!doc.setContent(m_drafts[index])) { return nullptr; }
+	QDomElement element = doc.documentElement();
+	element.setAttribute("pos", pos.getTicks());
+	Clip* clip = createClip(pos);
+	if (clip == nullptr) { return nullptr; }
+	clip->restoreState(element);
+	clip->movePosition(pos);
+	return clip;
 }
 
 void Track::setKickSource(bool on)

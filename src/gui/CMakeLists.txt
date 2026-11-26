@@ -98,6 +98,7 @@ SET(LMMS_SRCS
 	gui/tracks/PatternTrackView.cpp
 	gui/tracks/SampleTrackView.cpp
 	gui/tracks/TrackContentWidget.cpp
+	gui/tracks/TrackDrafts.cpp
 	gui/tracks/TrackLabelButton.cpp
 	gui/tracks/TrackOperationsWidget.cpp
 	gui/tracks/TrackRenameLineEdit.cpp

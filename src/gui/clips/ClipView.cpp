@@ -24,6 +24,8 @@
 
 #include "ClipView.h"
 
+#include <QUuid>
+
 #include <set>
 #include <cassert>
 
@@ -51,6 +53,7 @@
 #include "Song.h"
 #include "SongEditor.h"
 #include "StringPairDrag.h"
+#include "TrackDrafts.h"
 #include "TextFloat.h"
 #include "TrackContainer.h"
 #include "TrackContainerView.h"
@@ -414,6 +417,24 @@ DataFile ClipView::createClipDataFiles(
 	return dataFile;
 }
 
+void ClipView::paintLinkMarker(QPainter& painter)
+{
+	if (m_clip->linkGroupSize() < 2 || width() < 24) { return; }
+	painter.save();
+	painter.setRenderHint(QPainter::Antialiasing);
+	const QRectF box(width() - 19, 2, 16, 11);
+	painter.setPen(Qt::NoPen);
+	painter.setBrush(textBackgroundColor());
+	painter.drawRoundedRect(box, 2, 2);
+	// two chain links
+	painter.setPen(QPen(textColor(), 1.3));
+	painter.setBrush(Qt::NoBrush);
+	painter.drawRoundedRect(QRectF(box.left() + 2, box.top() + 3, 7, 5), 2.5, 2.5);
+	painter.drawRoundedRect(QRectF(box.left() + 7, box.top() + 3, 7, 5), 2.5, 2.5);
+	painter.restore();
+}
+
+
 void ClipView::paintTextLabel(QString const & text, QPainter & painter)
 {
 	if (text.trimmed() == "")
@@ -640,8 +661,22 @@ void ClipView::mouseMoveEvent( QMouseEvent * me )
 			// triggered once we go into drag.
 			m_action = Action::None;
 
+			// Custom: Ctrl+Shift+drag creates linked copies (they share their content)
+			const bool linked = me->modifiers() & Qt::ShiftModifier;
+			if (linked)
+			{
+				for (const auto clipView : clipViews)
+				{
+					if (!clipView->m_clip->isLinked())
+					{
+						clipView->m_clip->setLinkId(QUuid::createUuid().toString(QUuid::WithoutBraces));
+					}
+				}
+			}
+
 			// Write the Clips to the DataFile for copying
 			DataFile dataFile = createClipDataFiles( clipViews );
+			if (linked) { dataFile.content().firstChildElement("copyMetadata").setAttribute("linked", 1); }
 
 			// TODO -- thumbnail for all selected
 			QPixmap thumbnail = grab().scaled(
@@ -662,6 +697,11 @@ void ClipView::mouseMoveEvent( QMouseEvent * me )
 
 	const auto pos = position(me);
 	const float ppb = m_trackView->trackContainerView()->pixelsPerBar();
+	if ((m_action == Action::Move || m_action == Action::MoveSelection) && !fixedClips())
+	{
+		const QPoint global = QCursor::pos();
+		TrackDraftsPanel::updateDropHint(&global);
+	}
 	if( m_action == Action::Move )
 	{
 		TimePos newPos = draggedClipPos( me );
@@ -879,6 +919,29 @@ void ClipView::mouseMoveEvent( QMouseEvent * me )
 
 void ClipView::mouseReleaseEvent( QMouseEvent * me )
 {
+	// Custom: clips dropped on the drafts folder (tab or open panel) of a track go into its drafts
+	if ((m_action == Action::Move || m_action == Action::MoveSelection) && !fixedClips())
+	{
+		TrackDraftsPanel::updateDropHint(nullptr);
+		if (auto panel = TrackDraftsPanel::panelAt(QCursor::pos()))
+		{
+			QVector<ClipView*> moved;
+			if (m_action == Action::MoveSelection)
+			{
+				for (const auto object : m_trackView->trackContainerView()->selectedObjects())
+				{
+					if (auto clipView = dynamic_cast<ClipView*>(object)) { moved.push_back(clipView); }
+				}
+			}
+			if (moved.isEmpty()) { moved.push_back(this); }
+			m_action = Action::None;
+			s_textFloat->hide();
+			setCursor(Qt::ArrowCursor);
+			panel->absorbClips(moved);
+			return;
+		}
+	}
+
 	// If the Action::CopySelection was chosen as the action due to mouse movement,
 	// it will have been cleared.  At this point Toggle is the desired action.
 	// An active StringPairDrag will prevent this method from being called,
@@ -895,7 +958,8 @@ void ClipView::mouseReleaseEvent( QMouseEvent * me )
 		const int offset = m_clip->startTimeOffset();
 		if (m_action == Action::ResizeLeft && offset > 0)
 		{
-			if (auto midiClip = dynamic_cast<MidiClip*>(m_clip); midiClip && !midiClip->isLooped())
+			if (m_clip->isLinked()) {} // linked: the content is shared, only this clip's offset changes
+			else if (auto midiClip = dynamic_cast<MidiClip*>(m_clip); midiClip && !midiClip->isLooped())
 			{
 				midiClip->shiftContent(offset);
 				midiClip->setStartTimeOffset(0);
@@ -1011,10 +1075,61 @@ void ClipView::contextMenuEvent( QContextMenuEvent * cme )
 		this, &ClipView::toggleSelectedAutoResize
 	);
 
+	// Custom: drafts folder of the track
+	if (!fixedClips() && m_trackView->getTrackContentWidget()->draftsPanel() != nullptr)
+	{
+		contextMenu.addSeparator();
+		contextMenu.addAction(individualClip ? tr("Als Entwurf speichern") : tr("Auswahl als Entw\xc3\xbc" "rfe speichern"),
+			this, [selectedClips] {
+				QVector<ClipView*> movable;
+				for (const auto clipView : selectedClips)
+				{
+					if (clipView->getTrackView()->getTrackContentWidget()->draftsPanel() != nullptr)
+					{
+						movable.push_back(clipView);
+					}
+				}
+				moveToDrafts(movable);
+			});
+	}
+
+	// Custom: linked clips
+	if (!fixedClips() && m_clip->linkGroupSize() >= 2)
+	{
+		contextMenu.addSeparator();
+		contextMenu.addAction(tr("Verkn\xc3\xbcpfte Bl\xc3\xb6" "cke ausw\xc3\xa4hlen (%1)").arg(m_clip->linkGroupSize()),
+			this, [this] { selectLinkedClips(); });
+		contextMenu.addAction(individualClip ? tr("Verkn\xc3\xbcpfung l\xc3\xb6sen") : tr("Verkn\xc3\xbcpfung der Auswahl l\xc3\xb6sen"),
+			this, [selectedClips] {
+				for (const auto clipView : selectedClips)
+				{
+					clipView->getClip()->getTrack()->addJournalCheckPoint();
+					clipView->getClip()->setLinkId(QString());
+				}
+				Engine::getSong()->setModified();
+				Engine::getSong()->syncLinkedClips();
+			});
+	}
+
 	constructContextMenu( &contextMenu );
 
 	contextMenu.exec( QCursor::pos() );
 }
+
+void ClipView::selectLinkedClips()
+{
+	const QString id = m_clip->linkId();
+	if (id.isEmpty()) { return; }
+	for (const auto object : m_trackView->trackContainerView()->selectedObjects()) { object->setSelected(false); }
+	for (const auto trackView : m_trackView->trackContainerView()->trackViews())
+	{
+		for (const auto clipView : trackView->getTrackContentWidget()->clipViews())
+		{
+			if (clipView->getClip()->linkId() == id) { clipView->setSelected(true); }
+		}
+	}
+}
+
 
 // This method processes the actions from the context menu of the Clip View.
 void ClipView::contextMenuAction( ContextMenuAction action )
@@ -1064,6 +1179,39 @@ QVector<ClipView *> ClipView::getClickedClips()
 		? selection
 		: QVector<ClipView *>( 1, this );
 }
+
+void ClipView::removeWithoutJournal()
+{
+	close();
+	if (m_clip->getTrack())
+	{
+		auto guard = Engine::audioEngine()->requestChangesGuard();
+		m_clip->getTrack()->removeClip(m_clip);
+	}
+	m_clip->deleteLater();
+	m_trackView->update();
+}
+
+
+void ClipView::moveToDrafts(const QVector<ClipView*>& clipViews)
+{
+	// every clip goes into the drafts folder of its own track
+	QVector<Track*> tracks;
+	for (const auto clipView : clipViews)
+	{
+		auto track = clipView->getClip()->getTrack();
+		if (!tracks.contains(track)) { tracks.push_back(track); }
+	}
+	for (const auto track : tracks) { track->addJournalCheckPoint(); }
+	for (const auto clipView : clipViews)
+	{
+		clipView->getClip()->getTrack()->addDraft(clipView->getClip());
+		clipView->removeWithoutJournal();
+	}
+	Engine::getSong()->setModified();
+	Engine::getSong()->updateLength();
+}
+
 
 void ClipView::remove( QVector<ClipView *> clipvs )
 {

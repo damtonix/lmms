@@ -24,6 +24,8 @@
 
 #include "MainWindow.h"
 
+#include <sndfile.h>
+
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDesktopServices>
@@ -1852,6 +1854,49 @@ void MainWindow::showSnapshots()
 	SnapshotDialog(this).exec();
 }
 
+namespace
+{
+
+//! appends silence to the shorter WAV files, so all of them have the same length
+void padAudioFilesToSameLength(const QStringList& paths)
+{
+	sf_count_t longest = 0;
+	for (const auto& path : paths)
+	{
+		QFile file(path);
+		if (!file.open(QIODevice::ReadOnly)) { continue; }
+		SF_INFO info{};
+		if (auto sf = sf_open_fd(file.handle(), SFM_READ, &info, false))
+		{
+			longest = std::max(longest, info.frames);
+			sf_close(sf);
+		}
+	}
+	for (const auto& path : paths)
+	{
+		QFile file(path);
+		if (!file.open(QIODevice::ReadWrite)) { continue; }
+		SF_INFO info{};
+		auto sf = sf_open_fd(file.handle(), SFM_RDWR, &info, false);
+		if (sf == nullptr) { continue; }
+		if (info.frames < longest && info.channels > 0)
+		{
+			sf_seek(sf, 0, SEEK_END);
+			std::vector<float> zeros(4096 * info.channels, 0.f);
+			for (sf_count_t left = longest - info.frames; left > 0;)
+			{
+				const sf_count_t frames = std::min<sf_count_t>(left, 4096);
+				sf_writef_float(sf, zeros.data(), frames);
+				left -= frames;
+			}
+		}
+		sf_close(sf);
+	}
+}
+
+} // namespace
+
+
 void MainWindow::exportStems()
 {
 	StemExportDialog dialog(this);
@@ -1863,6 +1908,7 @@ void MainWindow::exportStems()
 
 	int done = 0;
 	QStringList failed;
+	QStringList written;
 	Engine::getSong()->setExportFullLength(true);
 	for (std::size_t i = 0; i < stems.size(); ++i)
 	{
@@ -1885,8 +1931,11 @@ void MainWindow::exportStems()
 			continue;
 		}
 		++done;
+		written << path;
 	}
 	Engine::getSong()->setExportFullLength(false);
+	// every stem renders until its own tail is silent: fill the shorter ones up with silence
+	padAudioFilesToSameLength(written);
 
 	QString message = tr("%1 von %2 Stems wurden nach %3 exportiert.").arg(done).arg(stems.size()).arg(dir);
 	if (!failed.isEmpty()) { message += "\n\n" + tr("Nicht exportiert: %1").arg(failed.join(", ")); }

@@ -125,6 +125,8 @@ Song::Song() :
 	m_kickMapTimer = new QTimer(this);
 	m_kickMapTimer->setInterval(250);
 	connect(m_kickMapTimer, &QTimer::timeout, this, &Song::updateKickMap);
+	// Custom: linked clips are compared regularly, so every way of editing (and undo) is covered
+	connect(m_kickMapTimer, &QTimer::timeout, this, &Song::syncLinkedClips);
 	m_kickMapTimer->start();
 
 	for (auto& scale : m_scales) {scale = std::make_shared<Scale>();}
@@ -770,8 +772,8 @@ void Song::startExport()
 			m_exportSongEnd = timeline.loopEnd();
 		}
 
-		if (!m_exportLoop) 
-			m_exportSongEnd += TimePos(1,0);
+		// Custom: no fixed extra bar any more, the renderer goes on until the tail is silent
+		// (ProjectRenderer::run, Song::exportWantsTail)
         
 		m_exportSongBegin = TimePos(0,0);
 		m_exportLoopBegin = timeline.loopBegin() < m_exportSongEnd && timeline.loopEnd() <= m_exportSongEnd

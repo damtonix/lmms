@@ -41,7 +41,9 @@ class Track;
 namespace gui
 {
 
-class ClipView;  // IWYU pragma: keep
+class ClipView;
+class TrackDraftsPanel;
+class TrackDraftsTab;  // IWYU pragma: keep
 class TrackView;
 
 class TrackContentWidget : public QWidget, public JournallingObject
@@ -64,6 +66,13 @@ class TrackContentWidget : public QWidget, public JournallingObject
 	Q_PROPERTY(int embossOffset READ embossOffset WRITE setEmbossOffset)
 
 public:
+	//! Custom: all clip views of this track
+	const QVector<ClipView*>& clipViews() const { return m_clipViews; }
+	//! Custom: drafts folder at the front of the lane (only in the song editor)
+	TrackDraftsPanel* draftsPanel() const { return m_draftsPanel; }
+	TrackDraftsTab* draftsTab() const { return m_draftsTab; }
+	void createDrafts();
+
 	//! @brief Create a new trackContentWidget
 	//!
 	//! Creates a new track content widget for the given track.
@@ -216,6 +225,8 @@ private:
 
 	using clipViewVector = QVector<ClipView*>;
 	clipViewVector m_clipViews;
+	TrackDraftsPanel* m_draftsPanel = nullptr;
+	TrackDraftsTab* m_draftsTab = nullptr;
 
 	QPixmap m_background;
 

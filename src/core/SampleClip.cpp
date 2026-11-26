@@ -328,6 +328,7 @@ void SampleClip::saveSettings( QDomDocument & _doc, QDomElement & _this )
 	{
 		_this.setAttribute("reversed", "true");
 	}
+	if (isLinked()) { _this.setAttribute("link", linkId()); }
 	// TODO: start- and end-frame
 }
 
@@ -376,6 +377,7 @@ void SampleClip::loadSettings( const QDomElement & _this )
 		m_sample.setReversed(true);
 		emit wasReversed(); // tell SampleClipView to update the view
 	}
+	setLinkId(_this.attribute("link"));
 }
 
 

@@ -497,6 +497,7 @@ void MidiClip::exportToXML(QDomDocument& doc, QDomElement& midiClipElement, bool
 	midiClipElement.setAttribute("steps", m_steps);
 	midiClipElement.setAttribute("len", length());
 	if (isLooped()) { midiClipElement.setAttribute("looplen", m_loopLength); }
+	if (isLinked()) { midiClipElement.setAttribute("link", linkId()); }
 
 	// now save settings of all notes
 	for (auto& note : m_notes)
@@ -574,6 +575,7 @@ void MidiClip::loadSettings( const QDomElement & _this )
 	setAutoResize(_this.attribute("autoresize", "1").toInt());
 	setStartTimeOffset(_this.attribute("off").toInt());
 	m_loopLength = std::max(0, _this.attribute("looplen", "0").toInt());
+	setLinkId(_this.attribute("link"));
 
 	emit dataChanged();
 }

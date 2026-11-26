@@ -807,6 +807,7 @@ void AutomationClip::saveSettings( QDomDocument & _doc, QDomElement & _this )
 	_this.setAttribute("off", startTimeOffset());
 	_this.setAttribute("autoresize", QString::number(getAutoResize()));
 	if (isLooped()) { _this.setAttribute("looplen", m_loopLength); }
+	if (isLinked()) { _this.setAttribute("link", linkId()); }
 
 	if (const auto& c = color())
 	{
@@ -860,6 +861,7 @@ void AutomationClip::loadSettings( const QDomElement & _this )
 	setMuted(_this.attribute( "mute", QString::number( false ) ).toInt() );
 	setAutoResize(_this.attribute("autoresize", "1").toInt());
 	setStartTimeOffset(_this.attribute("off").toInt());
+	setLinkId(_this.attribute("link"));
 
 	for( QDomNode node = _this.firstChild(); !node.isNull();
 						node = node.nextSibling() )

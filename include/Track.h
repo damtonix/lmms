@@ -28,6 +28,7 @@
 #include <vector>
 
 #include <QColor>
+#include <QStringList>
 
 #include "AutomatableModel.h"
 #include "JournallingObject.h"
@@ -135,6 +136,15 @@ public:
 	static float duckGain(const DuckSettings& settings, double msInPeriod, float strength = 1.f);
 	//! Custom: this track is a trigger ("Kick-Spur") for Kick-Ducking
 	bool isKickSource() const { return m_kickSource; }
+
+	//! Custom: drafts ("Entwuerfe") - clips kept with the track but not in it (not played, saved with the track)
+	const QStringList& drafts() const { return m_drafts; }
+	//! stores a copy of the clip as draft (the clip itself stays untouched)
+	void addDraft(const Clip* clip);
+	void addDraftXml(const QString& xml);
+	void removeDraft(int index);
+	//! creates a real clip from the draft at the given position (the draft stays)
+	Clip* createClipFromDraft(int index, TimePos pos);
 	void setKickSource(bool on);
 
 	//! Custom: no mute propagation to children (used while rendering stems)
@@ -414,6 +424,7 @@ private:
 	QString m_freezeProxyOf;
 	DuckSettings m_duck;
 	bool m_kickSource = false;
+	QStringList m_drafts; //!< Custom: XML of each draft clip
 	bool m_mutedBeforeParent = false; //!< Custom: own mute state before the parent was muted
 	static bool s_inSoloChange;       //!< Custom: no mute propagation while solo rearranges mutes
 
@@ -429,6 +440,7 @@ signals:
 	void collapsedChanged();
 	void frozenChanged();
 	void duckChanged();
+	void draftsChanged();
 } ;
 
 

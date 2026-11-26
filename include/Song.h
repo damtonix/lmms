@@ -199,6 +199,8 @@ public:
 	}
 
 	bool isExportDone() const;
+	//! Custom: after the song end, the export goes on until the sound has died away (not for loop exports)
+	bool exportWantsTail() const { return !m_exportLoop && !m_renderBetweenMarkers; }
 	int getExportProgress() const;
 
 	inline void setRenderBetweenMarkers( bool renderBetweenMarkers )
@@ -286,6 +288,13 @@ public:
 	std::shared_ptr<const KickMap> kickMap() const;
 	//! recompute the kick hits from the notes / samples of all kick tracks (main thread)
 	void updateKickMap();
+
+	//! Custom: linked clips. Number of clips in the song with this link id
+	int linkGroupSize(const QString& linkId) const { return m_linkGroupSizes.value(linkId, 0); }
+	//! copy the content of an edited linked clip to all clips of its group (main thread)
+	void syncLinkedClips();
+	//! sync soon (coalesced), e.g. after a clip changed
+	void scheduleLinkSync();
 
 	//! Custom: named arrangement markers; a section runs from a marker to the next one
 	struct ArrangementMarker
@@ -499,6 +508,10 @@ private:
 	std::shared_ptr<const KickMap> m_periodKickMap; //!< copy for the current period (audio thread)
 	mutable std::mutex m_kickMapMutex;
 	QTimer* m_kickMapTimer = nullptr;
+	QHash<QString, int> m_linkGroupSizes;      //!< Custom: linked clips per link id
+	QHash<QString, QString> m_linkContent;     //!< last synced content per link id
+	bool m_linkSyncScheduled = false;
+	bool m_syncingLinks = false;
 	volatile bool m_paused;
 
 	bool m_savingProject;

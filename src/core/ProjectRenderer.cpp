@@ -26,6 +26,10 @@
 #include <QFile>
 
 #include "ProjectRenderer.h"
+
+#include <algorithm>
+#include <cmath>
+#include <vector>
 #include "Song.h"
 #include "PerfLog.h"
 
@@ -171,6 +175,41 @@ void ProjectRenderer::run()
 		{
 			m_progress = nprog;
 			emit progressChanged( m_progress );
+		}
+	}
+
+	// Custom: render on after the song end until everything (reverb, delay, release) has died away.
+	// Silent periods are held back: if the sound comes back (e.g. a delay echo) they are written,
+	// at the end they are dropped, so the file ends where the sound ends.
+	if (!m_abort && Engine::getSong()->exportWantsTail())
+	{
+		constexpr float SilenceThreshold = 0.00001f; // -100 dBFS
+		const auto sampleRate = Engine::audioEngine()->outputSampleRate();
+		const auto holdFrames = static_cast<std::size_t>(sampleRate * 3);   // 3 s of silence = finished
+		const auto maxFrames = static_cast<std::size_t>(sampleRate * 120); // safety limit for endless sounds
+		std::vector<SampleFrame> pending;
+		std::size_t tailFrames = 0;
+		while (!m_abort && tailFrames < maxFrames)
+		{
+			const auto buffer = Engine::audioEngine()->renderNextPeriod();
+			tailFrames += buffer.size();
+			float peak = 0.f;
+			for (const auto& frame : buffer)
+			{
+				peak = std::max({peak, std::abs(frame[0]), std::abs(frame[1])});
+			}
+			if (peak >= SilenceThreshold)
+			{
+				if (!pending.empty())
+				{
+					m_fileDev->writeBuffer(pending.data(), pending.size());
+					pending.clear();
+				}
+				m_fileDev->writeBuffer(buffer.data(), buffer.size());
+				continue;
+			}
+			pending.insert(pending.end(), buffer.begin(), buffer.end());
+			if (pending.size() >= holdFrames) { break; }
 		}
 	}
 

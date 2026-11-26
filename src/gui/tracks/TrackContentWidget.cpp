@@ -23,6 +23,7 @@
  */
 
 #include "TrackContentWidget.h"
+#include "TrackDrafts.h"
 
 #include "GroupTrack.h"
 
@@ -168,6 +169,19 @@ void TrackContentWidget::addClipView( ClipView * clipv )
 	clip->saveJournallingState( false );
 	changePosition();
 	clip->restoreJournallingState();
+
+	// Custom: the drafts folder stays on top of the clips
+	if (m_draftsPanel && m_draftsPanel->isVisible()) { m_draftsPanel->raise(); }
+	if (m_draftsTab && m_draftsTab->isVisible()) { m_draftsTab->raise(); }
+}
+
+
+void TrackContentWidget::createDrafts()
+{
+	if (m_draftsPanel != nullptr) { return; }
+	m_draftsPanel = new TrackDraftsPanel(getTrack(), this);
+	m_draftsTab = new TrackDraftsTab(getTrack(), m_draftsPanel, this);
+	m_draftsTab->setGeometry(0, 0, TrackDraftsTab::Width, height());
 }
 
 
@@ -467,6 +481,8 @@ bool TrackContentWidget::pasteSelection( TimePos clipPos, const QMimeData * md, 
 
 		Clip * clip = t->createClip( pos );
 		if (clip == nullptr) { continue; } // e.g. group tracks
+		// Custom: only a Ctrl+Shift drag keeps the link, every other copy is independent
+		if (!metadata.attribute("linked").toInt()) { clipElement.removeAttribute("link"); }
 		clip->restoreState( clipElement );
 		clip->movePosition(pos); // Because we restored the state, we need to move the Clip again.
 		if( wasSelection )
@@ -607,6 +623,11 @@ void TrackContentWidget::resizeEvent( QResizeEvent * resizeEvent )
 {
 	// Update background
 	updateBackground();
+	if (m_draftsTab)
+	{
+		m_draftsTab->setGeometry(0, 0, TrackDraftsTab::Width, height());
+		m_draftsPanel->relayout();
+	}
 	// Force redraw
 	QWidget::resizeEvent( resizeEvent );
 }
