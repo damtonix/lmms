@@ -28,6 +28,7 @@
 #include <optional>
 
 #include <QVector>
+#include <vector>
 
 #include "ModelView.h"
 #include "Rubberband.h"
@@ -171,6 +172,17 @@ protected:
 	TrackView * m_trackView;
 	TimePos m_initialClipPos;
 	TimePos m_initialClipEnd;
+
+	//! Custom: clips resized together on the right edge (all selected clips, or just this one)
+	struct ResizeEntry
+	{
+		Clip* clip;
+		TimePos initialLength;
+		tick_t loopOriginal; //!< length of the part that loops (MIDI/automation), 0 = not loopable
+	};
+	std::vector<ResizeEntry> m_resizeGroup;
+	void setupResizeGroup(bool wholeSelection);
+	void applyGroupResize(tick_t delta, bool loop);
 
 	bool m_marker = false;
 	int m_markerPos = 0;

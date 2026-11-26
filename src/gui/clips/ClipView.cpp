@@ -353,8 +353,8 @@ void ClipView::updateCursor(QMouseEvent * me)
 	const auto posX = position(me).x();
 
 	// If we are at the edges, use the resize cursor
-	if (!me->buttons() && m_clip->manuallyResizable() && !isSelected()
-		&& ((posX >= width() - resizeGripWidth()) || (posX < resizeGripWidth())))
+	if (!me->buttons() && m_clip->manuallyResizable() && !fixedClips()
+		&& ((posX >= width() - resizeGripWidth()) || (!isSelected() && posX < resizeGripWidth())))
 	{
 		setCursor(Qt::SizeHorCursor);
 	}
@@ -497,7 +497,19 @@ void ClipView::mousePressEvent( QMouseEvent * me )
 		}
 		else
 		{
-			if( isSelected() )
+			if (isSelected() && m_clip->manuallyResizable() && !knifeMode
+				&& pos.x() >= width() - resizeGripWidth())
+			{
+				// Custom: right edge of a selected clip resizes / loops all selected clips together
+				m_action = Action::Resize;
+				setCursor(Qt::SizeHorCursor);
+				setupResizeGroup(true);
+				s_textFloat->setTitle(tr("Current length"));
+				s_textFloat->setText(tr("%1 Blöcke").arg(m_resizeGroup.size()));
+				s_textFloat->moveGlobal(this, QPoint(width() + 2, height() + 2));
+				s_textFloat->show();
+			}
+			else if( isSelected() )
 			{
 				m_action = Action::MoveSelection;
 			}
@@ -525,6 +537,7 @@ void ClipView::mousePressEvent( QMouseEvent * me )
 				{
 					m_action = Action::Resize;
 					setCursor( Qt::SizeHorCursor );
+					setupResizeGroup(false);
 				}
 				else if (pos.x() < resizeGripWidth())
 				{
@@ -761,32 +774,16 @@ void ClipView::mouseMoveEvent( QMouseEvent * me )
 			if ((midiClip || autoClip) && !fixedClips() && (me->modifiers() & Qt::ShiftModifier) && !unquantizedModHeld(me))
 			{
 				const auto loopLength = [&] { return midiClip ? midiClip->loopLength() : autoClip->loopLength(); };
-				const auto setLoopLength = [&](tick_t len) {
-					if (midiClip) { midiClip->setLoopLength(len); } else { autoClip->setLoopLength(len); }
-				};
 				const int offset = m_clip->startTimeOffset();
-				// The original part: the existing loop or the clip as it was when the drag started
-				const tick_t original = loopLength() > 0
-					? loopLength()
-					: static_cast<tick_t>(m_initialClipEnd - m_initialClipPos) - offset;
-				const TimePos originalClipLength = original + offset;
-
-				TimePos newLength = TimePos(l).quantize(snapSize);
-				if (newLength <= originalClipLength)
-				{
-					// dragged back onto the original: remove the loop
-					setLoopLength(0);
-					newLength = originalClipLength;
-				}
-				else
-				{
-					setLoopLength(original);
-				}
-				if (newLength != m_clip->length()) { m_clip->changeLength(newLength); }
-				m_clip->setAutoResize(false);
+				const TimePos newLength = TimePos(l).quantize(snapSize);
+				if (m_resizeGroup.empty()) { setupResizeGroup(false); }
+				// every clip of the group is extended by the same amount and loops its own original part
+				applyGroupResize(newLength - m_resizeGroup.front().initialLength, true);
+				tick_t original = loopLength();
+				if (original <= 0) { original = std::max<tick_t>(1, m_clip->length() - offset); }
 
 				s_textFloat->setTitle(loopLength() > 0
-					? tr("Loop: %1x").arg(QString::number((newLength - offset) / static_cast<double>(original), 'f', 2))
+					? tr("Loop: %1x").arg(QString::number((m_clip->length() - offset) / static_cast<double>(original), 'f', 2))
 					: tr("Loop: aus"));
 			}
 			// If the user is holding alt, or pressed ctrl after beginning the drag, don't quantize
@@ -826,6 +823,12 @@ void ClipView::mouseMoveEvent( QMouseEvent * me )
 					m_clip->changeLength(newLength);
 					m_clip->setAutoResize(false);
 				}
+			}
+			// Custom: the other selected clips follow by the same amount
+			if (m_resizeGroup.size() > 1 && !((midiClip || autoClip) && !fixedClips()
+				&& (me->modifiers() & Qt::ShiftModifier) && !unquantizedModHeld(me)))
+			{
+				applyGroupResize(m_clip->length() - m_resizeGroup.front().initialLength, false);
 			}
 		}
 		else
@@ -917,6 +920,70 @@ void ClipView::mouseMoveEvent( QMouseEvent * me )
 
 
 
+void ClipView::setupResizeGroup(bool wholeSelection)
+{
+	m_resizeGroup.clear();
+	std::vector<ClipView*> views;
+	if (wholeSelection)
+	{
+		for (const auto object : m_trackView->trackContainerView()->selectedObjects())
+		{
+			auto clipView = dynamic_cast<ClipView*>(object);
+			if (clipView && clipView != this && clipView->m_clip->manuallyResizable() && !clipView->fixedClips())
+			{
+				views.push_back(clipView);
+			}
+		}
+	}
+	views.insert(views.begin(), this);
+	for (const auto view : views)
+	{
+		Clip* clip = view->m_clip;
+		if (view != this || wholeSelection) { clip->addJournalCheckPoint(); }
+		tick_t loopOriginal = 0;
+		if (auto midiClip = dynamic_cast<MidiClip*>(clip))
+		{
+			loopOriginal = midiClip->loopLength() > 0 ? midiClip->loopLength() : clip->length() - clip->startTimeOffset();
+		}
+		else if (auto autoClip = dynamic_cast<AutomationClip*>(clip))
+		{
+			loopOriginal = autoClip->loopLength() > 0 ? autoClip->loopLength() : clip->length() - clip->startTimeOffset();
+		}
+		m_resizeGroup.push_back({clip, clip->length(), std::max<tick_t>(0, loopOriginal)});
+	}
+}
+
+
+
+
+void ClipView::applyGroupResize(tick_t delta, bool loop)
+{
+	for (const auto& entry : m_resizeGroup)
+	{
+		Clip* clip = entry.clip;
+		if (!loop && clip == m_clip) { continue; } // already resized by the normal code
+		TimePos target = std::max<tick_t>(1, entry.initialLength + delta);
+		if (loop && entry.loopOriginal > 0)
+		{
+			const TimePos originalClipLength = entry.loopOriginal + clip->startTimeOffset();
+			tick_t loopLength = entry.loopOriginal;
+			if (target <= originalClipLength)
+			{
+				// dragged back onto the original: remove the loop
+				loopLength = 0;
+				target = originalClipLength;
+			}
+			if (auto midiClip = dynamic_cast<MidiClip*>(clip)) { midiClip->setLoopLength(loopLength); }
+			else if (auto autoClip = dynamic_cast<AutomationClip*>(clip)) { autoClip->setLoopLength(loopLength); }
+		}
+		if (target != clip->length()) { clip->changeLength(target); }
+		clip->setAutoResize(false);
+	}
+}
+
+
+
+
 void ClipView::mouseReleaseEvent( QMouseEvent * me )
 {
 	// Custom: clips dropped on the drafts folder (tab or open panel) of a track go into its drafts
@@ -972,6 +1039,7 @@ void ClipView::mouseReleaseEvent( QMouseEvent * me )
 		}
 		// TODO: Fix m_clip->setJournalling() consistency
 		m_clip->setJournalling( true );
+		m_resizeGroup.clear();
 	}
 	else if( m_action == Action::Split )
 	{
