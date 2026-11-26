@@ -41,6 +41,7 @@ class QGridLayout;
 namespace lmms
 {
 
+class Clip;
 class Track;
 
 namespace gui { class FileBrowser; }
@@ -63,6 +64,8 @@ public:
 	QString askWavFile(const QString& title, const QString& baseName);
 	//! Custom: render only @p track and insert the result as a sample track below it
 	void bounceTrack(Track* track);
+	//! Custom: renders one clip (with its tail until silence) onto a sample track below its track
+	void bounceClip(Clip* clip);
 	//! Custom: render only @p track (solo); @p neutralMaster bypasses master effects/volume
 	bool renderTrackSolo(Track* track, const QString& path, const QString& title, bool neutralMaster);
 	//! Custom: render several tracks together, each with everything below it (group members)

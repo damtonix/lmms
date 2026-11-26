@@ -1996,6 +1996,41 @@ void MainWindow::unfreezeTrack(Track* track)
 	Engine::getSong()->setModified();
 }
 
+namespace
+{
+
+//! index (in the song editor) right after a track and everything below it (children)
+int indexBelowTrack(const Track* track)
+{
+	const auto& views = getGUI()->songEditor()->m_editor->trackViews();
+	int targetIndex = -1;
+	for (int i = 0; i < views.size(); ++i)
+	{
+		auto t = views[i]->getTrack();
+		bool inSubtree = t == track;
+		for (auto p = t->parentTrack(); !inSubtree && p != nullptr; p = p->parentTrack()) { inSubtree = p == track; }
+		if (inSubtree) { targetIndex = i + 1; }
+	}
+	return targetIndex;
+}
+
+//! creates the view of a new track and moves it directly below @p source (and its children), same group
+void insertTrackBelow(Track* source, Track* newTrack)
+{
+	auto editor = getGUI()->songEditor()->m_editor;
+	TrackView* newView = editor->createTrackView(newTrack);
+	const int targetIndex = indexBelowTrack(source);
+	if (targetIndex >= 0)
+	{
+		for (int j = editor->trackViews().indexOf(newView); j > targetIndex; --j) { editor->moveTrackView(newView, j - 1); }
+	}
+	if (const auto group = source->group()) { newTrack->setGroupId(group->uid()); }
+	editor->realignTracks();
+}
+
+} // namespace
+
+
 void MainWindow::bounceTrack(Track* track)
 {
 	Song* song = Engine::getSong();
@@ -2016,28 +2051,118 @@ void MainWindow::bounceTrack(Track* track)
 		clip->setSampleFile(path);
 	}
 
-	auto editor = getGUI()->songEditor()->m_editor;
-	TrackView* newView = editor->createTrackView(sampleTrack);
-	const auto& views = editor->trackViews();
-	int targetIndex = -1;
-	for (int i = 0; i < views.size(); ++i)
-	{
-		auto t = views[i]->getTrack();
-		bool inSubtree = t == track;
-		for (auto p = t->parentTrack(); !inSubtree && p != nullptr; p = p->parentTrack()) { inSubtree = p == track; }
-		if (inSubtree) { targetIndex = i + 1; }
-	}
-	if (targetIndex >= 0)
-	{
-		for (int j = views.indexOf(newView); j > targetIndex; --j) { editor->moveTrackView(newView, j - 1); }
-	}
-	// stay in the same group as the source track
-	if (const auto group = track->group()) { sampleTrack->setGroupId(group->uid()); }
-	editor->realignTracks();
+	insertTrackBelow(track, sampleTrack);
 	song->setModified();
 
 	TextFloat::displayMessage(tr("Bounce fertig"),
 		tr("%1 wurde als neue Sample-Spur eingef\xc3\xbcgt.").arg(QFileInfo(path).fileName()),
+		embed::getIconPixmap("sample_track", 24, 24), 3000);
+}
+
+
+void MainWindow::bounceClip(Clip* clip)
+{
+	Song* song = Engine::getSong();
+	if (clip == nullptr) { return; }
+	Track* track = clip->getTrack();
+	if (track == nullptr || track->trackContainer() != song) { return; }
+	if (track->type() != Track::Type::Instrument && track->type() != Track::Type::Sample) { return; }
+	const TimePos begin = clip->startPosition();
+	const TimePos end = clip->endPosition();
+	if (end <= begin) { return; }
+
+	// file next to the project ("<Projekt> Bounces"), otherwise in the user samples folder
+	const QString& projectFileName = song->projectFileName();
+	const QString dir = projectFileName.isEmpty()
+		? ConfigManager::inst()->userSamplesDir() + "Bounces"
+		: QFileInfo(projectFileName).absolutePath() + "/" + QFileInfo(projectFileName).completeBaseName() + " Bounces";
+	QDir().mkpath(dir);
+	QString base = track->name() + " - " + (clip->name().trimmed().isEmpty()
+		? tr("Takt %1").arg(begin.getBar() + 1) : clip->name().trimmed());
+	base.replace(QRegularExpression(FILENAME_FILTER), "_");
+	QString path = QDir(dir).filePath(base + ".wav");
+	for (int n = 2; QFileInfo::exists(path); ++n) { path = QDir(dir).filePath(QString("%1 (%2).wav").arg(base).arg(n)); }
+
+	// only this clip plays: the other clips of the track are muted while rendering
+	const bool journalling = Engine::projectJournal()->isJournalling();
+	Engine::projectJournal()->setJournalling(false);
+	std::vector<std::pair<Clip*, bool>> savedMutes;
+	for (auto other : track->getClips())
+	{
+		savedMutes.emplace_back(other, other->isMuted());
+		other->setMuted(other != clip);
+	}
+	Engine::projectJournal()->setJournalling(journalling);
+
+	// from the clip start to its end, then on until the tail (reverb, delay, release) is silent;
+	// without master effects / volume: the bounce is played through the master channel again
+	const tick_t playPos = song->getPlayPos(Song::PlayMode::Song).getTicks();
+	song->setExportRange(begin, end);
+	const bool ok = renderTrackSolo(track, path, tr("Block bouncen"), true);
+	song->clearExportRange();
+	song->setPlayPos(playPos, Song::PlayMode::Song);
+
+	Engine::projectJournal()->setJournalling(false);
+	for (const auto& [other, muted] : savedMutes)
+	{
+		other->setMuted(muted);
+	}
+	Engine::projectJournal()->setJournalling(journalling);
+	if (!ok) { return; }
+
+	// sample track directly below the track; an existing bounce track there is reused if the place is free
+	const QString bounceName = track->name() + " (Bounce)";
+	SampleTrack* sampleTrack = nullptr;
+	const auto& views = getGUI()->songEditor()->m_editor->trackViews();
+	const int below = indexBelowTrack(track);
+	if (below >= 0 && below < views.size())
+	{
+		auto candidate = dynamic_cast<SampleTrack*>(views[below]->getTrack());
+		if (candidate && candidate->name() == bounceName && !candidate->isFreezeProxy())
+		{
+			sampleTrack = candidate;
+		}
+	}
+
+	// length of the bounce (with tail), to see whether the place on an existing bounce track is free
+	TimePos bounceEnd = end;
+	{
+		QFile file(path);
+		SF_INFO info{};
+		if (file.open(QIODevice::ReadOnly))
+		{
+			if (auto sf = sf_open_fd(file.handle(), SFM_READ, &info, false))
+			{
+				bounceEnd = begin + TimePos::fromFrames(info.frames, Engine::framesPerTick(info.samplerate));
+				sf_close(sf);
+			}
+		}
+	}
+	if (sampleTrack != nullptr)
+	{
+		for (const auto c : sampleTrack->getClips())
+		{
+			if (c->startPosition() < bounceEnd && c->endPosition() > begin) { sampleTrack = nullptr; break; }
+		}
+	}
+
+	if (sampleTrack != nullptr)
+	{
+		sampleTrack->addJournalCheckPoint();
+		if (auto newClip = dynamic_cast<SampleClip*>(sampleTrack->createClip(begin))) { newClip->setSampleFile(path); }
+	}
+	else
+	{
+		sampleTrack = dynamic_cast<SampleTrack*>(Track::create(Track::Type::Sample, song));
+		if (sampleTrack == nullptr) { return; }
+		sampleTrack->setName(bounceName);
+		if (auto newClip = dynamic_cast<SampleClip*>(sampleTrack->createClip(begin))) { newClip->setSampleFile(path); }
+		insertTrackBelow(track, sampleTrack);
+	}
+	song->setModified();
+
+	TextFloat::displayMessage(tr("Block gebounced"),
+		tr("%1 liegt jetzt auf der Spur \"%2\".").arg(QFileInfo(path).fileName(), sampleTrack->name()),
 		embed::getIconPixmap("sample_track", 24, 24), 3000);
 }
 

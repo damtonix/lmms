@@ -34,6 +34,7 @@
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPointer>
 
 #include "AutomationClip.h"
 #include "Clipboard.h"
@@ -46,6 +47,7 @@
 #include "GuiApplication.h"
 #include "KeyboardShortcuts.h"
 #include "lmms_math.h"
+#include "MainWindow.h"
 #include "MidiClip.h"
 #include "MidiClipView.h"
 #include "PatternClip.h"
@@ -1158,6 +1160,26 @@ void ClipView::contextMenuEvent( QContextMenuEvent * cme )
 					}
 				}
 				moveToDrafts(movable);
+			});
+	}
+
+	// Custom: bounce a clip to audio (with its tail) onto a sample track below
+	if (!fixedClips() && m_clip->getTrack()->trackContainer() == Engine::getSong()
+		&& (m_clip->getTrack()->type() == Track::Type::Instrument || m_clip->getTrack()->type() == Track::Type::Sample))
+	{
+		contextMenu.addAction(embed::getIconPixmap("bounce", 16, 16),
+			individualClip ? tr("Bounce (Block zu Audio)") : tr("Bounce (jeden Block zu Audio)"),
+			this, [selectedClips] {
+				std::vector<QPointer<Clip>> clips;
+				for (const auto clipView : selectedClips)
+				{
+					const auto type = clipView->getClip()->getTrack()->type();
+					if (type == Track::Type::Instrument || type == Track::Type::Sample) { clips.emplace_back(clipView->getClip()); }
+				}
+				for (const auto& clip : clips)
+				{
+					if (clip) { getGUI()->mainWindow()->bounceClip(clip); }
+				}
 			});
 	}
 

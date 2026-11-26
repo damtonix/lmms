@@ -263,6 +263,9 @@ public:
 	//! Custom: load @p tempFile (a rewritten copy of the project) but keep @p realFileName as project file
 	//! Custom: when exporting, muted tracks still count for the song length (stems of equal length)
 	void setExportFullLength(bool on) { m_exportFullLength = on; }
+	//! Custom: export only this range (plus the tail until silence), e.g. for bouncing one clip; end <= begin = off
+	void setExportRange(TimePos begin, TimePos end) { m_exportRangeBegin = begin; m_exportRangeEnd = end; }
+	void clearExportRange() { m_exportRangeBegin = m_exportRangeEnd = TimePos{0}; }
 
 	//! Custom: position (in ticks, fractional) at the start of the audio period being rendered, for ducking
 	double periodStartTick() const { return m_periodStartTick.load(std::memory_order_relaxed); }
@@ -504,6 +507,8 @@ private:
 	std::atomic<double> m_periodStartTick{0.0}; //!< Custom: song position at the start of the current period
 	std::atomic<bool> m_periodPlaying{false};
 	bool m_exportFullLength = false; //!< Custom: stems all get the full song length
+	TimePos m_exportRangeBegin{0}; //!< Custom: setExportRange
+	TimePos m_exportRangeEnd{0};
 	std::shared_ptr<const KickMap> m_kickMap;       //!< Custom: latest kick map (guarded by m_kickMapMutex)
 	std::shared_ptr<const KickMap> m_periodKickMap; //!< copy for the current period (audio thread)
 	mutable std::mutex m_kickMapMutex;

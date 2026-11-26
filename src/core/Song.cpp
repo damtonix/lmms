@@ -755,7 +755,14 @@ void Song::startExport()
 
 	auto& timeline = getTimeline(PlayMode::Song);
 
-	if (m_renderBetweenMarkers)
+	if (m_exportRangeEnd > m_exportRangeBegin && !m_renderBetweenMarkers)
+	{
+		// Custom: only this range, the renderer adds the tail (exportWantsTail)
+		m_exportSongBegin = m_exportLoopBegin = m_exportRangeBegin;
+		m_exportSongEnd = m_exportLoopEnd = m_exportRangeEnd;
+		timeline.setTicks(m_exportRangeBegin.getTicks());
+	}
+	else if (m_renderBetweenMarkers)
 	{
 		m_exportSongBegin = m_exportLoopBegin = timeline.loopBegin();
 		m_exportSongEnd = m_exportLoopEnd = timeline.loopEnd();
