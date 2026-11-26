@@ -119,6 +119,11 @@ public:
 		int shape = 0;            //!< 0 = smooth, 1 = linear, 2 = pumping
 		int source = 0;           //!< 0 = real hits of the kick track(s), 1 = fixed grid (rate)
 		bool followVelocity = true; //!< quieter kick notes duck less
+		float attackMs = 2.f;     //!< time to go down
+		float lookaheadMs = 2.f;  //!< the attack starts this long before the hit
+		int band = 0;             //!< 0 = whole signal, 1 = only lows (< lowHz), 2 = band lowHz..highHz, 3 = only highs (> highHz)
+		float lowHz = 150.f;
+		float highHz = 2000.f;
 		bool operator==(const DuckSettings&) const = default;
 	};
 	const DuckSettings& duckSettings() const { return m_duck; }
@@ -126,12 +131,11 @@ public:
 	//! own ducking or the one of the nearest parent that has it enabled
 	std::optional<DuckSettings> effectiveDuck() const;
 	static int duckRateTicks(int rate);
-	//! gain (0..1) at the given time in ms after the start of a duck period
+	//! gain (0..1) at the given time in ms after the attack started
 	static float duckGain(const DuckSettings& settings, double msInPeriod, float strength = 1.f);
 	//! Custom: this track is a trigger ("Kick-Spur") for Kick-Ducking
 	bool isKickSource() const { return m_kickSource; }
 	void setKickSource(bool on);
-	static constexpr float DuckAttackMs = 2.f;
 
 	//! Custom: no mute propagation to children (used while rendering stems)
 	static bool suspendMutePropagation(bool suspend)

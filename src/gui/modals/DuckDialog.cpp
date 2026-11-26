@@ -96,7 +96,7 @@ protected:
 		{
 			const double period = Track::duckRateTicks(m_settings.rate);
 			span = period * 2;
-			for (int i = 0; i < 3; ++i) { hits.push_back({period * i, 1.f}); }
+			for (int i = -1; i < 3; ++i) { hits.push_back({period * i, 1.f}); }
 			caption = DuckDialog::tr("%1 BPM, ein Abschnitt = %2 ms").arg(bpm).arg(qRound(period * msPerTick));
 		}
 
@@ -109,7 +109,7 @@ protected:
 		}
 		p.drawLine(QPointF(r.left(), r.top()), QPointF(r.right(), r.top()));
 
-		const double attackTicks = Track::DuckAttackMs / msPerTick;
+		const double aheadTicks = m_settings.lookaheadMs / msPerTick;
 		QPainterPath path;
 		const int steps = static_cast<int>(r.width());
 		for (int i = 0; i <= steps; ++i)
@@ -118,9 +118,9 @@ protected:
 			double gain = 1.0;
 			for (auto h = hits.rbegin(); h != hits.rend(); ++h)
 			{
-				if (h->tick <= t + attackTicks)
+				if (h->tick <= t + aheadTicks)
 				{
-					gain = Track::duckGain(m_settings, (t - h->tick) * msPerTick + Track::DuckAttackMs,
+					gain = Track::duckGain(m_settings, (t - h->tick) * msPerTick + m_settings.lookaheadMs,
 						m_settings.followVelocity ? h->strength : 1.f);
 					break;
 				}
@@ -151,6 +151,15 @@ protected:
 			}
 		}
 
+		if (m_settings.band != 0)
+		{
+			const QString range = m_settings.band == 1
+				? DuckDialog::tr("nur unter %1 Hz").arg(qRound(m_settings.lowHz))
+				: m_settings.band == 3
+					? DuckDialog::tr("nur \xc3\xbc" "ber %1 Hz").arg(qRound(m_settings.highHz))
+					: DuckDialog::tr("nur %1 bis %2 Hz").arg(qRound(m_settings.lowHz)).arg(qRound(m_settings.highHz));
+			caption = range + "  \xc2\xb7  " + caption;
+		}
 		p.setPen(QColor(150, 156, 164));
 		QFont f = font();
 		f.setPointSizeF(std::max(7.0, f.pointSizeF() * 0.85));
@@ -183,9 +192,9 @@ DuckDialog::DuckDialog(Track* track, QWidget* parent)
 	auto layout = new QVBoxLayout(this);
 
 	auto intro = new QLabel(track->type() == Track::Type::Group
-		? tr("Senkt die Lautst\xc3\xa4rke aller Spuren dieser Gruppe auf jedem Schlag kurz ab "
+		? tr("Senkt die Lautst\xc3\xa4rke (oder nur einen Frequenzbereich) aller Spuren dieser Gruppe auf jedem Schlag kurz ab "
 			"(wie Sidechain auf die Kick). Spuren mit eigenem Ducking nutzen ihr eigenes.")
-		: tr("Senkt die Lautst\xc3\xa4rke dieser Spur auf jedem Schlag kurz ab (wie Sidechain auf die Kick). "
+		: tr("Senkt die Lautst\xc3\xa4rke (oder nur einen Frequenzbereich) dieser Spur auf jedem Schlag kurz ab (wie Sidechain auf die Kick). "
 			"Wirkt nach den Spur-Effekten, nur w\xc3\xa4hrend der Wiedergabe."), this);
 	intro->setWordWrap(true);
 	layout->addWidget(intro);
@@ -207,7 +216,34 @@ DuckDialog::DuckDialog(Track* track, QWidget* parent)
 		grid->addWidget(label, row, 2);
 		++row;
 	};
+	grid->addWidget(new QLabel(tr("Ducken"), this), row, 0);
+	m_band = new QComboBox(this);
+	m_band->addItems({tr("Ganze Lautst\xc3\xa4rke"), tr("Nur Tiefen (Bereich unten)"),
+		tr("Nur einen Frequenzbereich (Band)"), tr("Nur H\xc3\xb6hen (Bereich oben)")});
+	m_band->setCurrentIndex(settings.band);
+	grid->addWidget(m_band, row++, 1, 1, 2);
+	m_lowName = new QLabel(this);
+	grid->addWidget(m_lowName, row, 0);
+	m_low = new QSlider(Qt::Horizontal, this);
+	m_low->setRange(0, 1000);
+	m_low->setValue(hzToSlider(settings.lowHz));
+	grid->addWidget(m_low, row, 1);
+	m_lowLabel = new QLabel(this);
+	m_lowLabel->setMinimumWidth(60);
+	grid->addWidget(m_lowLabel, row++, 2);
+	m_highName = new QLabel(this);
+	grid->addWidget(m_highName, row, 0);
+	m_high = new QSlider(Qt::Horizontal, this);
+	m_high->setRange(0, 1000);
+	m_high->setValue(hzToSlider(settings.highHz));
+	grid->addWidget(m_high, row, 1);
+	m_highLabel = new QLabel(this);
+	m_highLabel->setMinimumWidth(60);
+	grid->addWidget(m_highLabel, row++, 2);
+
 	addSlider(tr("Tiefe"), 0, 100, qRound(settings.depth * 100), m_depth, m_depthLabel);
+	addSlider(tr("Attack"), 1, 100, qRound(settings.attackMs * 2), m_attack, m_attackLabel);
+	addSlider(tr("Vorlauf"), 0, 30, qRound(settings.lookaheadMs), m_lookahead, m_lookaheadLabel);
 	addSlider(tr("Halten"), 0, 200, qRound(settings.holdMs), m_hold, m_holdLabel);
 	addSlider(tr("Release"), 10, 1000, qRound(settings.releaseMs), m_release, m_releaseLabel);
 
@@ -251,6 +287,11 @@ DuckDialog::DuckDialog(Track* track, QWidget* parent)
 	connect(reset, &QPushButton::clicked, this, [this] {
 		const Track::DuckSettings defaults;
 		m_source->setCurrentIndex(defaults.source);
+		m_band->setCurrentIndex(defaults.band);
+		m_low->setValue(hzToSlider(defaults.lowHz));
+		m_high->setValue(hzToSlider(defaults.highHz));
+		m_attack->setValue(qRound(defaults.attackMs * 2));
+		m_lookahead->setValue(qRound(defaults.lookaheadMs));
 		m_velocity->setChecked(defaults.followVelocity);
 		m_depth->setValue(qRound(defaults.depth * 100));
 		m_hold->setValue(qRound(defaults.holdMs));
@@ -260,13 +301,14 @@ DuckDialog::DuckDialog(Track* track, QWidget* parent)
 	});
 
 	connect(m_enabled, &QCheckBox::toggled, this, &DuckDialog::apply);
-	for (auto slider : {m_depth, m_hold, m_release})
+	for (auto slider : {m_depth, m_hold, m_release, m_attack, m_lookahead, m_low, m_high})
 	{
 		connect(slider, &QSlider::valueChanged, this, &DuckDialog::apply);
 	}
 	connect(m_rate, qOverload<int>(&QComboBox::currentIndexChanged), this, &DuckDialog::apply);
 	connect(m_shape, qOverload<int>(&QComboBox::currentIndexChanged), this, &DuckDialog::apply);
 	connect(m_source, qOverload<int>(&QComboBox::currentIndexChanged), this, &DuckDialog::apply);
+	connect(m_band, qOverload<int>(&QComboBox::currentIndexChanged), this, &DuckDialog::apply);
 	connect(m_velocity, &QCheckBox::toggled, this, &DuckDialog::apply);
 	connect(m_kickTrack, qOverload<int>(&QComboBox::activated), this, &DuckDialog::chooseKickTrack);
 
@@ -382,16 +424,46 @@ void DuckDialog::chooseKickTrack(int index)
 }
 
 
+int DuckDialog::hzToSlider(float hz)
+{
+	// logarithmic 20 Hz .. 20 kHz
+	return qRound(std::log(std::clamp(hz, 20.f, 20000.f) / 20.0) / std::log(1000.0) * 1000.0);
+}
+
+float DuckDialog::sliderToHz(int value)
+{
+	const double hz = 20.0 * std::pow(1000.0, value / 1000.0);
+	// round to readable values
+	const double step = hz < 100 ? 1 : hz < 1000 ? 5 : hz < 5000 ? 50 : 100;
+	return static_cast<float>(std::round(hz / step) * step);
+}
+
+
 void DuckDialog::updateLabels()
 {
 	m_depthLabel->setText(QString("%1 %").arg(m_depth->value()));
 	m_holdLabel->setText(QString("%1 ms").arg(m_hold->value()));
 	m_releaseLabel->setText(QString("%1 ms").arg(m_release->value()));
+	m_attackLabel->setText(QString("%1 ms").arg(m_attack->value() / 2.0));
+	m_lookaheadLabel->setText(QString("%1 ms").arg(m_lookahead->value()));
+	const auto hzText = [](float hz) {
+		return hz >= 1000.f ? QString("%1 kHz").arg(hz / 1000.f, 0, 'f', hz >= 10000.f ? 1 : 2) : QString("%1 Hz").arg(qRound(hz));
+	};
+	m_lowLabel->setText(hzText(sliderToHz(m_low->value())));
+	m_highLabel->setText(hzText(sliderToHz(m_high->value())));
+	const int band = m_band->currentIndex();
+	m_lowName->setText(band == 2 ? tr("Von") : tr("Bis"));
+	m_highName->setText(band == 2 ? tr("Bis") : tr("Ab"));
 	const bool on = m_enabled->isChecked();
-	for (auto w : std::initializer_list<QWidget*>{m_depth, m_hold, m_release, m_shape, m_source})
+	for (auto w : std::initializer_list<QWidget*>{m_depth, m_hold, m_release, m_shape, m_source, m_attack, m_lookahead, m_band})
 	{
 		w->setEnabled(on);
 	}
+	for (auto w : std::initializer_list<QWidget*>{m_lowName, m_low, m_lowLabel}) { w->setVisible(band == 1 || band == 2); }
+	for (auto w : std::initializer_list<QWidget*>{m_highName, m_high, m_highLabel}) { w->setVisible(band == 2 || band == 3); }
+	m_low->setEnabled(on);
+	m_high->setEnabled(on);
+	if (isVisible()) { resize(width(), sizeHint().height()); }
 	const bool kick = m_source->currentIndex() == 0;
 	const auto map = Engine::getSong()->kickMap();
 	const bool hasKick = map != nullptr && map->hasSource;
@@ -414,6 +486,19 @@ void DuckDialog::apply()
 	settings.shape = m_shape->currentIndex();
 	settings.source = m_source->currentIndex();
 	settings.followVelocity = m_velocity->isChecked();
+	settings.attackMs = m_attack->value() / 2.f;
+	settings.lookaheadMs = static_cast<float>(m_lookahead->value());
+	settings.band = m_band->currentIndex();
+	settings.lowHz = sliderToHz(m_low->value());
+	settings.highHz = sliderToHz(m_high->value());
+	if (settings.band == 2 && settings.highHz < settings.lowHz * 1.25f)
+	{
+		// keep the band open: push the other slider along
+		const QSignalBlocker blockHigh(m_high);
+		m_high->setValue(hzToSlider(settings.lowHz * 1.25f));
+		settings.highHz = sliderToHz(m_high->value());
+		updateLabels();
+	}
 	m_curve->setSettings(settings, settings.source == 0);
 	if (m_track.isNull()) { return; }
 	if (!(m_track->duckSettings() == settings))

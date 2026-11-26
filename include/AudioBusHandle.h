@@ -26,7 +26,9 @@
 #ifndef LMMS_AUDIO_BUS_HANDLE_H
 #define LMMS_AUDIO_BUS_HANDLE_H
 
+#include <array>
 #include <memory>
+#include <vector>
 #include <QString>
 #include <QMutex>
 
@@ -52,6 +54,43 @@ class BoolModel;
 	processes the @ref EffectChain (if existing) on that buffer
 	and finally merges the buffer into its @ref MixerChannel.
 */
+//! Custom: Linkwitz-Riley crossover (24 dB/oct) for band ducking, low + high sums to an allpass
+class DuckCrossover
+{
+public:
+	void set(double freq, double sampleRate);
+	void split(float in, float& low, float& high)
+	{
+		low = m_lp2.process(m_lp1.process(in));
+		high = m_hp2.process(m_hp1.process(in));
+	}
+	//! same phase shift as split() but without splitting (keeps the bands in phase)
+	float allpass(float in)
+	{
+		float low, high;
+		split(in, low, high);
+		return low + high;
+	}
+	void reset() { m_lp1.reset(); m_lp2.reset(); m_hp1.reset(); m_hp2.reset(); }
+
+private:
+	struct Biquad
+	{
+		double b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0;
+		double z1 = 0, z2 = 0;
+		float process(float x)
+		{
+			const double y = b0 * x + z1;
+			z1 = b1 * x - a1 * y + z2;
+			z2 = b2 * x - a2 * y;
+			return static_cast<float>(y);
+		}
+		void reset() { z1 = z2 = 0; }
+	};
+	Biquad m_lp1, m_lp2, m_hp1, m_hp2;
+};
+
+
 class AudioBusHandle : public ThreadableJob
 {
 public:
@@ -89,6 +128,13 @@ public:
 
 private:
 	void applyDucking(f_cnt_t fpp);
+	std::vector<float> m_duckGains;
+	struct DuckBandState
+	{
+		int band = -1;
+		float lowHz = 0, highHz = 0, sampleRate = 0;
+		std::array<DuckCrossover, 2> first, second, lowAllpass; //!< per channel
+	} m_duckBand;
 
 	volatile bool m_bufferUsage;
 

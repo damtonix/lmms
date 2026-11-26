@@ -258,26 +258,47 @@ void AudioBusHandle::doProcessing()
 }
 
 
-void AudioBusHandle::applyDucking(f_cnt_t fpp)
+void DuckCrossover::set(double freq, double sampleRate)
 {
-	// Custom: "Kick-Ducking" after the track effects, on the real kick hits or on a fixed grid
-	if (m_track == nullptr) { return; }
-	const auto song = Engine::getSong();
-	if (song == nullptr || !song->periodPlaying()) { return; }
-	const auto duck = m_track->effectiveDuck();
-	if (!duck.has_value() || duck->depth <= 0.f) { return; }
+	// RBJ Butterworth sections (Q = 1/sqrt(2)), two of them in a row = Linkwitz-Riley 4th order
+	const double w0 = 2.0 * 3.141592653589793 * std::clamp(freq, 10.0, sampleRate * 0.45) / sampleRate;
+	const double cosw = std::cos(w0);
+	const double alpha = std::sin(w0) / (2.0 * 0.7071067811865476);
+	const double a0 = 1.0 + alpha;
+	const auto setup = [&](Biquad& q, bool lowpass) {
+		const double k = lowpass ? 1.0 - cosw : 1.0 + cosw;
+		q.b0 = k / 2.0 / a0;
+		q.b1 = (lowpass ? k : -k) / a0;
+		q.b2 = q.b0;
+		q.a1 = -2.0 * cosw / a0;
+		q.a2 = (1.0 - alpha) / a0;
+	};
+	setup(m_lp1, true);
+	setup(m_lp2, true);
+	setup(m_hp1, false);
+	setup(m_hp2, false);
+}
 
+
+namespace
+{
+
+//! gain per frame of this period, false if the whole period stays at 1
+bool computeDuckGains(const Track* track, const Track::DuckSettings& duck, f_cnt_t fpp, std::vector<float>& gains)
+{
+	const auto song = Engine::getSong();
 	const double framesPerTick = Engine::framesPerTick();
 	const double msPerFrame = 1000.0 / Engine::audioEngine()->outputSampleRate();
+	const double msPerTick = msPerFrame * framesPerTick;
 	const double startTick = song->periodStartTick();
-	auto left = m_buffer.buffer(0);
-	auto right = m_buffer.buffer(1);
+	gains.assign(fpp, 1.f);
+	bool any = false;
 
 	const auto map = song->periodKickMap();
-	if (duck->source == 0 && map != nullptr && map->hasSource)
+	if (duck.source == 0 && map != nullptr && map->hasSource)
 	{
 		// the kick never ducks itself (e.g. when it sits in a ducked group)
-		if (m_track->isKickSource()) { return; }
+		if (track->isKickSource()) { return false; }
 		const std::vector<Song::KickHit>* hits = nullptr;
 		double wrap = 0.0;
 		if (song->playMode() == Song::PlayMode::Song) { hits = &map->song; }
@@ -290,11 +311,10 @@ void AudioBusHandle::applyDucking(f_cnt_t fpp)
 				wrap = map->patternLength[index];
 			}
 		}
-		if (hits == nullptr || hits->empty()) { return; }
+		if (hits == nullptr || hits->empty()) { return false; }
 
-		const double msPerTick = msPerFrame * framesPerTick;
-		// the volume is fully down exactly on the hit: the short attack starts a bit earlier
-		const double attackTicks = Track::DuckAttackMs / msPerTick;
+		// the attack starts "lookahead" ms before the hit
+		const double aheadTicks = duck.lookaheadMs / msPerTick;
 		const auto lastHitBefore = [hits](double tick) {
 			const auto it = std::upper_bound(hits->begin(), hits->end(), tick,
 				[](double t, const Song::KickHit& hit) { return t < hit.tick; });
@@ -306,9 +326,8 @@ void AudioBusHandle::applyDucking(f_cnt_t fpp)
 		{
 			double tick = startTick + f / framesPerTick;
 			if (wrap > 0.0) { tick = std::fmod(tick, wrap); }
-			const double ahead = tick + attackTicks;
-			if (ahead < previous) { index = lastHitBefore(ahead); }
-			else if (f == 0) { index = lastHitBefore(ahead); }
+			const double ahead = tick + aheadTicks;
+			if (f == 0 || ahead < previous) { index = lastHitBefore(ahead); }
 			else
 			{
 				while (index + 1 < static_cast<long>(hits->size()) && (*hits)[index + 1].tick <= ahead) { ++index; }
@@ -316,22 +335,110 @@ void AudioBusHandle::applyDucking(f_cnt_t fpp)
 			previous = ahead;
 			if (index < 0) { continue; }
 			const auto& hit = (*hits)[index];
-			const double ms = (tick - hit.tick) * msPerTick + Track::DuckAttackMs;
-			const float gain = Track::duckGain(*duck, ms, duck->followVelocity ? hit.strength : 1.f);
-			left[f] *= gain;
-			right[f] *= gain;
+			const double ms = (tick - hit.tick) * msPerTick + duck.lookaheadMs;
+			gains[f] = Track::duckGain(duck, ms, duck.followVelocity ? hit.strength : 1.f);
+			any = any || gains[f] < 1.f;
+		}
+		return any;
+	}
+
+	const double periodFrames = Track::duckRateTicks(duck.rate) * framesPerTick;
+	const double startFrame = startTick * framesPerTick + duck.lookaheadMs / msPerFrame;
+	for (f_cnt_t f = 0; f < fpp; ++f)
+	{
+		const double inPeriod = std::fmod(startFrame + f, periodFrames);
+		gains[f] = Track::duckGain(duck, inPeriod * msPerFrame);
+		any = any || gains[f] < 1.f;
+	}
+	return any;
+}
+
+} // namespace
+
+
+void AudioBusHandle::applyDucking(f_cnt_t fpp)
+{
+	// Custom: "Kick-Ducking" after the track effects, on the real kick hits or on a fixed grid,
+	// on the whole signal or only on a frequency range
+	if (m_track == nullptr) { return; }
+	const auto song = Engine::getSong();
+	if (song == nullptr || !song->periodPlaying()) { return; }
+	const auto duck = m_track->effectiveDuck();
+	if (!duck.has_value() || duck->depth <= 0.f) { return; }
+
+	const bool any = computeDuckGains(m_track, *duck, fpp, m_duckGains);
+	auto left = m_buffer.buffer(0);
+	auto right = m_buffer.buffer(1);
+	const auto& g = m_duckGains;
+
+	if (duck->band == 0)
+	{
+		if (!any) { return; }
+		for (f_cnt_t f = 0; f < fpp; ++f)
+		{
+			left[f] *= g[f];
+			right[f] *= g[f];
 		}
 		return;
 	}
 
-	const double periodFrames = Track::duckRateTicks(duck->rate) * framesPerTick;
-	const double startFrame = startTick * framesPerTick;
-	for (f_cnt_t f = 0; f < fpp; ++f)
+	// band ducking: the crossover always runs (also without ducking), so the sound does not change in between
+	auto& st = m_duckBand;
+	const float sampleRate = static_cast<float>(Engine::audioEngine()->outputSampleRate());
+	const float lowHz = duck->lowHz;
+	const float highHz = duck->band == 2 ? std::max(duck->highHz, duck->lowHz * 1.25f) : duck->highHz;
+	if (st.band != duck->band || st.lowHz != lowHz || st.highHz != highHz || st.sampleRate != sampleRate)
 	{
-		const double inPeriod = std::fmod(startFrame + f, periodFrames);
-		const float gain = Track::duckGain(*duck, inPeriod * msPerFrame);
-		left[f] *= gain;
-		right[f] *= gain;
+		const bool reset = st.band != duck->band || st.sampleRate != sampleRate;
+		st.band = duck->band;
+		st.lowHz = lowHz;
+		st.highHz = highHz;
+		st.sampleRate = sampleRate;
+		for (int ch = 0; ch < 2; ++ch)
+		{
+			if (reset) { st.first[ch].reset(); st.second[ch].reset(); st.lowAllpass[ch].reset(); }
+			st.first[ch].set(duck->band == 3 ? highHz : lowHz, sampleRate);
+			st.second[ch].set(highHz, sampleRate);
+			st.lowAllpass[ch].set(highHz, sampleRate);
+		}
+	}
+
+	for (int ch = 0; ch < 2; ++ch)
+	{
+		auto buf = ch == 0 ? left : right;
+		auto& first = st.first[ch];
+		switch (duck->band)
+		{
+			case 1: // only the lows
+				for (f_cnt_t f = 0; f < fpp; ++f)
+				{
+					float low, high;
+					first.split(buf[f], low, high);
+					buf[f] = low * g[f] + high;
+				}
+				break;
+			case 3: // only the highs
+				for (f_cnt_t f = 0; f < fpp; ++f)
+				{
+					float low, high;
+					first.split(buf[f], low, high);
+					buf[f] = low + high * g[f];
+				}
+				break;
+			default: // a band in the middle
+			{
+				auto& second = st.second[ch];
+				auto& lowAllpass = st.lowAllpass[ch];
+				for (f_cnt_t f = 0; f < fpp; ++f)
+				{
+					float low, rest, mid, high;
+					first.split(buf[f], low, rest);
+					second.split(rest, mid, high);
+					buf[f] = lowAllpass.allpass(low) + mid * g[f] + high;
+				}
+				break;
+			}
+		}
 	}
 }
 

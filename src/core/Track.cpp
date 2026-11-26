@@ -220,6 +220,11 @@ void Track::saveTrack(QDomDocument& doc, QDomElement& element, bool presetMode)
 			element.setAttribute("duckshape", m_duck.shape);
 			element.setAttribute("ducksource", m_duck.source);
 			element.setAttribute("duckvelocity", m_duck.followVelocity ? 1 : 0);
+			element.setAttribute("duckattack", m_duck.attackMs);
+			element.setAttribute("ducklookahead", m_duck.lookaheadMs);
+			element.setAttribute("duckband", m_duck.band);
+			element.setAttribute("ducklow", m_duck.lowHz);
+			element.setAttribute("duckhigh", m_duck.highHz);
 		}
 		if (m_kickSource) { element.setAttribute("kicksource", 1); }
 	}
@@ -291,6 +296,11 @@ void Track::loadTrack(const QDomElement& element, bool presetMode)
 			duck.shape = std::clamp(element.attribute("duckshape", "0").toInt(), 0, 2);
 			duck.source = std::clamp(element.attribute("ducksource", "0").toInt(), 0, 1);
 			duck.followVelocity = element.attribute("duckvelocity", "1").toInt() != 0;
+			duck.attackMs = std::clamp(element.attribute("duckattack", "2").toFloat(), 0.5f, 50.f);
+			duck.lookaheadMs = std::clamp(element.attribute("ducklookahead", "2").toFloat(), 0.f, 30.f);
+			duck.band = std::clamp(element.attribute("duckband", "0").toInt(), 0, 3);
+			duck.lowHz = std::clamp(element.attribute("ducklow", "150").toFloat(), 20.f, 20000.f);
+			duck.highHz = std::clamp(element.attribute("duckhigh", "2000").toFloat(), 20.f, 20000.f);
 		}
 		setDuckSettings(duck);
 		setKickSource(element.attribute("kicksource", "0").toInt() != 0);
@@ -730,12 +740,18 @@ void Track::setKickSource(bool on)
 float Track::duckGain(const DuckSettings& s, double ms, float strength)
 {
 	// amount of ducking: ramps in quickly (no click), holds, then releases
+	if (ms < 0) { return 1.f; }
+	const double attack = std::max(0.1f, s.attackMs);
 	double amount;
-	if (ms < DuckAttackMs) { amount = ms / DuckAttackMs; }
-	else if (ms < DuckAttackMs + s.holdMs) { amount = 1.0; }
+	if (ms < attack)
+	{
+		const double a = ms / attack;
+		amount = a * a * (3.0 - 2.0 * a);
+	}
+	else if (ms < attack + s.holdMs) { amount = 1.0; }
 	else
 	{
-		const double r = std::min(1.0, (ms - DuckAttackMs - s.holdMs) / std::max(1.f, s.releaseMs));
+		const double r = std::min(1.0, (ms - attack - s.holdMs) / std::max(1.f, s.releaseMs));
 		double recovered;
 		switch (s.shape)
 		{

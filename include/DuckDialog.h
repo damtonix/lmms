@@ -41,6 +41,8 @@ private:
 	DuckDialog(Track* track, QWidget* parent);
 	void apply();
 	void updateLabels();
+	static int hzToSlider(float hz);
+	static float sliderToHz(int value);
 	QList<Track*> kickCandidates() const;
 	void autoDetectKick();
 	void fillKickTracks();
@@ -54,6 +56,17 @@ private:
 	QComboBox* m_rate;
 	QComboBox* m_shape;
 	QComboBox* m_source;
+	QComboBox* m_band;
+	QSlider* m_low;
+	QSlider* m_high;
+	QSlider* m_attack;
+	QSlider* m_lookahead;
+	QLabel* m_lowName;
+	QLabel* m_highName;
+	QLabel* m_lowLabel;
+	QLabel* m_highLabel;
+	QLabel* m_attackLabel;
+	QLabel* m_lookaheadLabel;
 	QComboBox* m_kickTrack;
 	QLabel* m_kickInfo;
 	QCheckBox* m_velocity;
