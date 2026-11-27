@@ -36,6 +36,8 @@
 #include <QSpacerItem>
 #include <QVBoxLayout>
 
+#include "CpuMeter.h"
+
 #include "AudioEngine.h"
 #include "ConfigManager.h"
 #include "Engine.h"
@@ -139,6 +141,19 @@ InstrumentTrackView::InstrumentTrackView( InstrumentTrack * _it, TrackContainerV
 	m_activityIndicator->setFixedSize(8, 28);
 	m_activityIndicator->show();
 
+	// Custom: CPU load of this track (instrument + track effects)
+	m_cpuMeter = new CpuMeter([_it] { return _it->cpuTime().take(); },
+		tr("instrument and effects of this track"), getTrackSettingsWidget());
+	if (ConfigManager::inst()->value("ui", "compacttrackbuttons").toInt())
+	{
+		m_cpuMeter->setFixedSize(5, 26); // narrow vertical bar, no text
+	}
+	else
+	{
+		m_cpuMeter->setFixedSize(28, 14);
+		m_tlb->setFixedWidth(m_tlb->width() - 32); // make room for the meter
+	}
+
 	auto masterLayout = new QVBoxLayout(getTrackSettingsWidget());
 	masterLayout->setContentsMargins(0, 1, 0, 0);
 	auto layout = new QHBoxLayout();
@@ -147,6 +162,9 @@ InstrumentTrackView::InstrumentTrackView( InstrumentTrack * _it, TrackContainerV
 	layout->addWidget(m_tlb);
 	layout->addWidget(m_mixerChannelNumber);
 	layout->addWidget(m_activityIndicator);
+	layout->addSpacing(2);
+	layout->addWidget(m_cpuMeter, 0, Qt::AlignVCenter);
+	layout->addSpacing(2);
 	layout->addWidget(m_volumeKnob);
 	layout->addWidget(m_panningKnob);
 	masterLayout->addLayout(layout);

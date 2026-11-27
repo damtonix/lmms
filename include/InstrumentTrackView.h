@@ -111,6 +111,7 @@ private:
 	Knob * m_volumeKnob;
 	Knob * m_panningKnob;
 	FadeButton * m_activityIndicator;
+	class CpuMeter* m_cpuMeter = nullptr; // Custom
 
 	QMenu * m_midiMenu;
 

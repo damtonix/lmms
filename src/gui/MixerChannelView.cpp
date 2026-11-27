@@ -45,6 +45,7 @@
 #include "EffectRackView.h"
 #include "Fader.h"
 #include "FontHelper.h"
+#include "CpuMeter.h"
 #include "GuiApplication.h"
 #include "Knob.h"
 #include "LcdWidget.h"
@@ -147,6 +148,11 @@ MixerChannelView::MixerChannelView(QWidget* parent, MixerView* mixerView, int ch
 	m_peakIndicator = new PeakIndicator(this);
 	connect(m_fader, &Fader::peakChanged, m_peakIndicator, &PeakIndicator::updatePeak);
 
+	// Custom: CPU load of this channel's effect chain
+	m_cpuMeter = new CpuMeter([this] { return this->mixerChannel()->m_cpuTime.take(); },
+		tr("effects of this mixer channel"), this);
+	m_cpuMeter->setFixedHeight(14);
+
 	m_effectRackView = new EffectRackView{&mixerChannel->m_fxChain, mixerView->m_racksWidget};
 	m_effectRackView->setFixedWidth(EffectRackView::DEFAULT_WIDTH);
 
@@ -161,6 +167,7 @@ MixerChannelView::MixerChannelView(QWidget* parent, MixerView* mixerView, int ch
 	mainLayout->addWidget(m_renameLineEditView, 1, Qt::AlignHCenter);
 	mainLayout->addLayout(soloMuteLayout);
 	mainLayout->addWidget(m_peakIndicator);
+	mainLayout->addWidget(m_cpuMeter);
 	mainLayout->addWidget(m_fader, 0, Qt::AlignHCenter);
 
 	connect(m_renameLineEdit, &QLineEdit::editingFinished, this, &MixerChannelView::renameFinished);

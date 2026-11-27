@@ -121,6 +121,8 @@ void AudioBusHandle::doProcessing()
 		return;
 	}
 
+	CpuTimeProbe cpuProbe(m_track ? &m_track->cpuTime() : nullptr); // Custom
+
 	const f_cnt_t fpp = Engine::audioEngine()->framesPerPeriod();
 
 	// clear the buffer

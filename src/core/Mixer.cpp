@@ -214,7 +214,10 @@ void MixerChannel::doProcessing()
 
 		const float v = m_volumeModel.value();
 
-		m_stillRunning = m_fxChain.processAudioBuffer(m_buffer);
+		{
+			CpuTimeProbe probe(&m_cpuTime); // Custom
+			m_stillRunning = m_fxChain.processAudioBuffer(m_buffer);
+		}
 
 		const auto peakSamples = SampleFrame{m_buffer.absPeakValue(0), m_buffer.absPeakValue(1)};
 		m_peakLeft = std::max(m_peakLeft, peakSamples[0] * v);

@@ -93,6 +93,7 @@ SET(LMMS_SRCS
 
 	gui/tracks/AutomationTrackView.cpp
 	gui/tracks/FadeButton.cpp
+	gui/widgets/CpuMeter.cpp
 	gui/tracks/GroupTrackView.cpp
 	gui/tracks/InstrumentTrackView.cpp
 	gui/tracks/PatternTrackView.cpp

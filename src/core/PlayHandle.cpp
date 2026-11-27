@@ -26,6 +26,8 @@
 #include "AudioEngine.h"
 #include "BufferManager.h"
 #include "Engine.h"
+#include "AudioBusHandle.h"
+#include "Track.h"
 
 #include <QThread>
 
@@ -52,6 +54,14 @@ PlayHandle::~PlayHandle()
 
 void PlayHandle::doProcessing()
 {
+	// Custom: per-track CPU time. Nested play handles (e.g. notes processed inside an
+	// InstrumentPlayHandle) are already part of the outer measurement.
+	static thread_local int s_depth = 0;
+	const Track* track = (s_depth == 0 && m_audioBusHandle) ? m_audioBusHandle->track() : nullptr;
+	CpuTimeProbe cpuProbe(track ? &track->cpuTime() : nullptr);
+	++s_depth;
+	struct DepthGuard { ~DepthGuard() { --s_depth; } } depthGuard;
+
 	if( m_usesBuffer )
 	{
 		m_bufferReleased = false;

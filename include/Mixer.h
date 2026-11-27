@@ -33,6 +33,8 @@
 
 #include <atomic>
 #include <optional>
+
+#include "CpuTime.h"
 #include <QColor>
 
 namespace lmms
@@ -49,6 +51,7 @@ public:
 	virtual ~MixerChannel();
 
 	EffectChain m_fxChain;
+	CpuTimeCounter m_cpuTime; //!< Custom: CPU time of the effect chain
 
 	// set to true if any effect in the channel is enabled and running
 	bool m_stillRunning;

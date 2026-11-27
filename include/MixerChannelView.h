@@ -123,6 +123,7 @@ private:
 	AutomatableButton* m_muteButton;
 	AutomatableButton* m_soloButton;
 	PeakIndicator* m_peakIndicator = nullptr;
+	class CpuMeter* m_cpuMeter = nullptr; // Custom
 	Fader* m_fader;
 	EffectRackView* m_effectRackView;
 	MixerView* m_mixerView;

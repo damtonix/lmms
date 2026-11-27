@@ -96,6 +96,7 @@ class AudioBusHandle : public ThreadableJob
 public:
 	//! Custom: use the track's effective mute state (includes group mute)
 	void setTrack(const Track* track) { m_track = track; }
+	const Track* track() const { return m_track; }
 	AudioBusHandle(const QString& name, bool hasEffectChain = true,
 		FloatModel* volumeModel = nullptr, FloatModel* panningModel = nullptr,
 		BoolModel* mutedModel = nullptr);

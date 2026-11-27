@@ -35,6 +35,8 @@
 #include "LmmsTypes.h"
 #include <optional>
 
+#include "CpuTime.h"
+
 
 namespace lmms
 {
@@ -75,6 +77,8 @@ public:
 public slots:
 	void setMuted(const bool val) { m_mutedModel.setValue(val); }
 public:
+	//! Custom: CPU time spent on this track (instrument + track effects)
+	const CpuTimeCounter& cpuTime() const { return m_cpuTime; }
 	//! Own mute button state (ignores group)
 	bool isMutedSelf() const { return m_mutedModel.value(); }
 
@@ -372,6 +376,9 @@ public slots:
 
 	//! Custom: muting a track mutes its children (and restores them when unmuted)
 	void propagateMuteToChildren();
+
+private:
+	CpuTimeCounter m_cpuTime; // Custom
 
 private:
 	//! @brief Save this track's settings to file
