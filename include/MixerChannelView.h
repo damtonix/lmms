@@ -91,6 +91,9 @@ public slots:
 	void selectColor();
 	void randomizeColor();
 
+protected:
+	void resizeEvent(QResizeEvent* event) override;
+
 private slots:
 	void renameFinished();
 	void removeChannel();
@@ -101,6 +104,7 @@ private slots:
 private:
 	bool confirmRemoval(int index);
 	QString elideName(const QString& name);
+	void updateNameArea();
 	MixerChannel* mixerChannel() const;
 	auto isMasterChannel() const -> bool { return m_channelIndex == 0; }
 

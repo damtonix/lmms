@@ -26,6 +26,8 @@
 
 #include <QCheckBox>
 #include <QFont>
+#include <QResizeEvent>
+#include <algorithm>
 #include <QGraphicsProxyWidget>
 #include <QGraphicsScene>
 #include <QGraphicsView>
@@ -102,7 +104,7 @@ MixerChannelView::MixerChannelView(QWidget* parent, MixerView* mixerView, int ch
 
 	m_renameLineEdit = new QLineEdit{mixerName, nullptr};
 	m_renameLineEdit->setFixedWidth(65);
-	m_renameLineEdit->setFont(adjustedToPixelSize(font(), LARGE_FONT_SIZE));
+	m_renameLineEdit->setFont(adjustedToPixelSize(font(), SMALL_FONT_SIZE));
 	m_renameLineEdit->setReadOnly(true);
 	m_renameLineEdit->installEventFilter(this);
 
@@ -115,7 +117,11 @@ MixerChannelView::MixerChannelView(QWidget* parent, MixerView* mixerView, int ch
 
 	auto renameLineEditProxy = renameLineEditScene->addWidget(m_renameLineEdit);
 	renameLineEditProxy->setRotation(-90);
-	m_renameLineEditView->setFixedSize(m_renameLineEdit->height() + 5, m_renameLineEdit->width() + 5);
+	// The name area takes the extra height when the mixer window grows (the fader keeps its size)
+	m_renameLineEditView->setFixedWidth(m_renameLineEdit->height() + 5);
+	m_renameLineEditView->setMinimumHeight(m_renameLineEdit->width() + 5);
+	m_renameLineEditView->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+	m_renameLineEditView->setFrameShape(QFrame::NoFrame);
 
 	m_muteButton = new AutomatableButton(this, tr("Mute"));
 	m_muteButton->setObjectName("btn-mute");
@@ -136,6 +142,7 @@ MixerChannelView::MixerChannelView(QWidget* parent, MixerView* mixerView, int ch
 	soloMuteLayout->addWidget(m_muteButton, 0, Qt::AlignHCenter);
 
 	m_fader = new Fader{&mixerChannel->m_volumeModel, tr("Fader %1").arg(channelIndex), this};
+	m_fader->setFixedHeight(160);
 
 	m_peakIndicator = new PeakIndicator(this);
 	connect(m_fader, &Fader::peakChanged, m_peakIndicator, &PeakIndicator::updatePeak);
@@ -151,10 +158,10 @@ MixerChannelView::MixerChannelView(QWidget* parent, MixerView* mixerView, int ch
 	mainLayout->addWidget(m_sendKnob, 0, Qt::AlignHCenter);
 	mainLayout->addWidget(m_sendArrow, 0, Qt::AlignHCenter);
 	mainLayout->addWidget(m_channelNumberLcd, 0, Qt::AlignHCenter);
-	mainLayout->addWidget(m_renameLineEditView, 0, Qt::AlignHCenter);
+	mainLayout->addWidget(m_renameLineEditView, 1, Qt::AlignHCenter);
 	mainLayout->addLayout(soloMuteLayout);
 	mainLayout->addWidget(m_peakIndicator);
-	mainLayout->addWidget(m_fader, 1, Qt::AlignHCenter);
+	mainLayout->addWidget(m_fader, 0, Qt::AlignHCenter);
 
 	connect(m_renameLineEdit, &QLineEdit::editingFinished, this, &MixerChannelView::renameFinished);
 
@@ -394,6 +401,32 @@ QString MixerChannelView::elideName(const QString& name)
 	const auto metrics = QFontMetrics{m_renameLineEdit->font()};
 	const auto elidedName = metrics.elidedText(name, Qt::ElideRight, maxTextHeight);
 	return elidedName;
+}
+
+void MixerChannelView::resizeEvent(QResizeEvent* event)
+{
+	QWidget::resizeEvent(event);
+	updateNameArea();
+}
+
+void MixerChannelView::updateNameArea()
+{
+	// The line edit is rotated by -90 degrees, so its width is the visible text height
+	const int length = std::max(20, m_renameLineEditView->height() - 5);
+	if (m_renameLineEdit->width() != length)
+	{
+		m_renameLineEdit->setFixedWidth(length);
+	}
+	if (auto scene = m_renameLineEditView->scene())
+	{
+		scene->setSceneRect(scene->itemsBoundingRect());
+		m_renameLineEditView->centerOn(scene->sceneRect().center());
+	}
+	if (!m_inRename)
+	{
+		m_renameLineEdit->setText(elideName(mixerChannel()->m_name));
+		m_renameLineEdit->setCursorPosition(0);
+	}
 }
 
 MixerChannel* MixerChannelView::mixerChannel() const
