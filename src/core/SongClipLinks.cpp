@@ -29,7 +29,7 @@ namespace
 //! attributes that belong to the single clip (where it is), not to the shared content
 const QStringList& perClipAttributes()
 {
-	static const QStringList attributes{"pos", "len", "off", "muted", "mute", "looplen", "autoresize", "color"};
+	static const QStringList attributes{"pos", "len", "off", "muted", "mute", "looplen", "autoresize", "color", "fadein", "fadeout"};
 	return attributes;
 }
 

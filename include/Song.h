@@ -312,6 +312,11 @@ public:
 	tick_t sectionEnd(std::size_t index) const;
 	void duplicateSection(std::size_t index);
 	void deleteSection(std::size_t index);
+	//! Custom: inserts @p length ticks of empty space at @p pos (clips, markers and loop points behind it move)
+	void insertSpace(tick_t pos, tick_t length);
+	//! Custom: removes the range [begin, end): clips starting inside are deleted, clips reaching into it are
+	//! shortened, everything behind it moves forward
+	void removeRange(tick_t begin, tick_t end);
 	//! swaps section @p index with the following one (contents and markers)
 	void swapSectionWithNext(std::size_t index);
 

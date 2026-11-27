@@ -1380,6 +1380,89 @@ void Song::deleteSection(std::size_t index)
 	setModified();
 }
 
+void Song::insertSpace(tick_t pos, tick_t length)
+{
+	if (length <= 0 || pos < 0) { return; }
+	{
+		auto guard = Engine::audioEngine()->requestChangesGuard();
+		for (auto track : arrangementTracks())
+		{
+			std::vector<Clip*> later;
+			for (auto clip : track->getClips())
+			{
+				if (clip->startPosition() >= pos) { later.push_back(clip); }
+			}
+			if (later.empty()) { continue; }
+			track->addJournalCheckPoint();
+			for (auto clip : later) { clip->movePosition(clip->startPosition() + length); }
+		}
+	}
+
+	auto markers = m_arrangementMarkers;
+	for (auto& marker : markers)
+	{
+		if (marker.tick >= pos) { marker.tick += length; }
+	}
+	setArrangementMarkers(std::move(markers));
+
+	auto& timeline = getTimeline(PlayMode::Song);
+	const tick_t loopBegin = timeline.loopBegin().getTicks();
+	const tick_t loopEnd = timeline.loopEnd().getTicks();
+	timeline.setLoopPoints(TimePos(loopBegin >= pos ? loopBegin + length : loopBegin),
+		TimePos(loopEnd > pos ? loopEnd + length : loopEnd));
+	updateLength();
+	setModified();
+}
+
+void Song::removeRange(tick_t begin, tick_t end)
+{
+	const tick_t length = end - begin;
+	if (length <= 0 || begin < 0) { return; }
+	{
+		auto guard = Engine::audioEngine()->requestChangesGuard();
+		for (auto track : arrangementTracks())
+		{
+			std::vector<Clip*> later, inside, reaching;
+			for (auto clip : track->getClips())
+			{
+				const tick_t start = clip->startPosition();
+				if (start >= end) { later.push_back(clip); }
+				else if (start >= begin) { inside.push_back(clip); }
+				else if (clip->endPosition() > begin) { reaching.push_back(clip); }
+			}
+			if (later.empty() && inside.empty() && reaching.empty()) { continue; }
+			track->addJournalCheckPoint();
+			for (auto clip : inside) { delete clip; }
+			for (auto clip : reaching)
+			{
+				clip->changeLength(TimePos(begin - clip->startPosition()));
+				clip->setAutoResize(false);
+			}
+			for (auto clip : later) { clip->movePosition(clip->startPosition() - length); }
+		}
+	}
+
+	std::vector<ArrangementMarker> markers;
+	for (auto marker : m_arrangementMarkers)
+	{
+		if (marker.tick >= begin && marker.tick < end) { continue; }
+		if (marker.tick >= end) { marker.tick -= length; }
+		markers.push_back(marker);
+	}
+	setArrangementMarkers(std::move(markers));
+
+	auto& timeline = getTimeline(PlayMode::Song);
+	const auto mapTick = [begin, end, length](tick_t t) {
+		return t >= end ? t - length : (t > begin ? begin : t);
+	};
+	const tick_t loopBegin = mapTick(timeline.loopBegin().getTicks());
+	tick_t loopEnd = mapTick(timeline.loopEnd().getTicks());
+	if (loopEnd <= loopBegin) { loopEnd = loopBegin + TimePos::ticksPerBar(); }
+	timeline.setLoopPoints(TimePos(loopBegin), TimePos(loopEnd));
+	updateLength();
+	setModified();
+}
+
 void Song::swapSectionWithNext(std::size_t index)
 {
 	if (index + 1 >= m_arrangementMarkers.size()) { return; }

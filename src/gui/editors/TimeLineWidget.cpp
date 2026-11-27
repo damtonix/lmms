@@ -34,6 +34,8 @@
 #include "ConfigManager.h"
 #include "DeprecationHelper.h"
 #include "embed.h"
+#include "Engine.h"
+#include "Song.h"
 #include "KeyboardShortcuts.h"
 #include "NStateButton.h"
 #include "TextFloat.h"
@@ -429,6 +431,46 @@ void TimeLineWidget::contextMenuEvent(QContextMenuEvent* event)
 		m_timeline->setLoopEnd(end);
 		update();
 	});
+
+	// Custom: insert / remove bars (song editor only)
+	auto song = Engine::getSong();
+	if (m_timeline == &song->getTimeline(Song::PlayMode::Song))
+	{
+		const tick_t ticksPerBar = TimePos::ticksPerBar();
+		const tick_t barTick = getClickedTime(event->x()).getTicks() / ticksPerBar * ticksPerBar;
+		const int barNumber = barTick / ticksPerBar + 1;
+		menu.addSeparator();
+		const auto insertMenu = menu.addMenu(embed::getIconPixmap("insert_bar"),
+			tr("Leere Takte einf\xc3\xbcgen vor Takt %1").arg(barNumber));
+		const auto removeMenu = menu.addMenu(embed::getIconPixmap("remove_bar"),
+			tr("Takte entfernen ab Takt %1").arg(barNumber));
+		for (const int bars : {1, 2, 4, 8, 16})
+		{
+			insertMenu->addAction(bars == 1 ? tr("1 Takt") : tr("%1 Takte").arg(bars), [barTick, bars, ticksPerBar] {
+				Engine::getSong()->insertSpace(barTick, bars * ticksPerBar);
+			});
+			removeMenu->addAction(bars == 1 ? tr("1 Takt") : tr("%1 Takte").arg(bars), [barTick, bars, ticksPerBar] {
+				auto song = Engine::getSong();
+				song->snapshotCurrentState("vor-takte-entfernen");
+				song->removeRange(barTick, barTick + bars * ticksPerBar);
+			});
+		}
+		const tick_t loopBegin = m_timeline->loopBegin().getTicks();
+		const tick_t loopEnd = m_timeline->loopEnd().getTicks();
+		if (loopEnd > loopBegin)
+		{
+			const QString range = tr("Takt %1 bis %2").arg(loopBegin / ticksPerBar + 1)
+				.arg((loopEnd + ticksPerBar - 1) / ticksPerBar);
+			menu.addAction(tr("Loop-Bereich leer einf\xc3\xbcgen (%1)").arg(range), [loopBegin, loopEnd] {
+				Engine::getSong()->insertSpace(loopBegin, loopEnd - loopBegin);
+			});
+			menu.addAction(tr("Loop-Bereich herausschneiden (%1)").arg(range), [loopBegin, loopEnd] {
+				auto song = Engine::getSong();
+				song->snapshotCurrentState("vor-takte-entfernen");
+				song->removeRange(loopBegin, loopEnd);
+			});
+		}
+	}
 
 	menu.addSeparator();
 

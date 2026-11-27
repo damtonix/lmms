@@ -26,18 +26,25 @@
 
 #include <QApplication>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
+
+#include <algorithm>
+#include <cmath>
 
 #include "FileDialog.h"
 #include "GuiApplication.h"
 #include "AutomationEditor.h"
 #include "embed.h"
+#include "Engine.h"
 #include "PathUtil.h"
 #include "SampleClip.h"
 #include "SampleThumbnailRenderer.h"
 #include "Song.h"
 #include "StringPairDrag.h"
 #include "TrackContainerView.h"
+#include "TextFloat.h"
 #include "TrackView.h"
 
 namespace lmms::gui
@@ -57,6 +64,7 @@ SampleClipView::SampleClipView( SampleClip * _clip, TrackView * _tv ) :
 	connect(m_clip, SIGNAL(sampleChanged()), this, SLOT(updateSample()));
 
 	connect(m_clip, SIGNAL(wasReversed()), this, SLOT(update()));
+	connect(m_clip, &Clip::dataChanged, this, [this] { update(); });
 
 	setStyle( QApplication::style() );
 }
@@ -87,10 +95,38 @@ void SampleClipView::constructContextMenu(QMenu* cm)
 
 	cm->addAction(
 		embed::getIconPixmap("flip_x"),
-		tr("Reverse sample"),
+		tr("Umdrehen (Reverse)"),
 		this,
 		SLOT(reverseSample())
 	);
+
+	// Custom: fades (drag the small handles at the top corners)
+	auto fadeMenu = cm->addMenu(tr("Fades"));
+	const auto setFadesForSelection = [this](tick_t fadeIn, tick_t fadeOut, bool onlyIfNone) {
+		for (const auto clipView : getClickedClips())
+		{
+			auto clip = dynamic_cast<SampleClip*>(clipView->getClip());
+			if (!clip) { continue; }
+			if (onlyIfNone && (clip->fadeIn() > 0 || clip->fadeOut() > 0)) { continue; }
+			clip->addJournalCheckPoint();
+			clip->setFades(fadeIn < 0 ? clip->fadeIn() : fadeIn, fadeOut < 0 ? clip->fadeOut() : fadeOut);
+		}
+		Engine::getSong()->setModified();
+	};
+	// one tick at 120 BPM is about 10 ms
+	fadeMenu->addAction(tr("Kurze Fades gegen Knackser (1 Tick)"), this,
+		[setFadesForSelection] { setFadesForSelection(1, 1, false); });
+	fadeMenu->addAction(tr("Fade-In: 1 Takt"), this,
+		[setFadesForSelection] { setFadesForSelection(TimePos::ticksPerBar(), -1, false); });
+	fadeMenu->addAction(tr("Fade-Out: 1 Takt"), this,
+		[setFadesForSelection] { setFadesForSelection(-1, TimePos::ticksPerBar(), false); });
+	fadeMenu->addSeparator();
+	fadeMenu->addAction(tr("Fade-In entfernen"), this, [setFadesForSelection] { setFadesForSelection(0, -1, false); });
+	fadeMenu->addAction(tr("Fade-Out entfernen"), this, [setFadesForSelection] { setFadesForSelection(-1, 0, false); });
+	fadeMenu->addAction(tr("Alle Fades entfernen"), this, [setFadesForSelection] { setFadesForSelection(0, 0, false); });
+	fadeMenu->addSeparator();
+	auto hint = fadeMenu->addAction(tr("Tipp: an den kleinen Griffen oben links/rechts ziehen"));
+	hint->setEnabled(false);
 
 	cm->addAction(
 		embed::getIconPixmap("automation_ghost_note"),
@@ -143,6 +179,21 @@ void SampleClipView::dropEvent( QDropEvent * _de )
 
 void SampleClipView::mousePressEvent( QMouseEvent * _me )
 {
+	// Custom: drag a fade handle
+	if (_me->button() == Qt::LeftButton && !fixedClips() && !(_me->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier)))
+	{
+		if (const int handle = fadeHandleAt(_me->pos()))
+		{
+			m_fadeDrag = handle;
+			m_clip->addJournalCheckPoint();
+			setCursor(Qt::SizeHorCursor);
+			textFloat()->setTitle(handle == 1 ? tr("Fade-In") : tr("Fade-Out"));
+			textFloat()->setText(QString());
+			textFloat()->moveGlobal(this, QPoint(width() + 2, height() + 2));
+			textFloat()->show();
+			return;
+		}
+	}
 	if( _me->button() == Qt::LeftButton &&
 		_me->modifiers() & Qt::ControlModifier &&
 		_me->modifiers() & Qt::ShiftModifier )
@@ -168,6 +219,14 @@ void SampleClipView::mousePressEvent( QMouseEvent * _me )
 
 void SampleClipView::mouseReleaseEvent(QMouseEvent *_me)
 {
+	if (m_fadeDrag != 0)
+	{
+		m_fadeDrag = 0;
+		textFloat()->hide();
+		setCursor(Qt::ArrowCursor);
+		Engine::getSong()->setModified();
+		return;
+	}
 	if( _me->button() == Qt::MiddleButton && !_me->modifiers() )
 	{
 		auto sClip = dynamic_cast<SampleClip*>(getClip());
@@ -177,6 +236,110 @@ void SampleClipView::mouseReleaseEvent(QMouseEvent *_me)
 		}
 	}
 	ClipView::mouseReleaseEvent( _me );
+}
+
+
+
+float SampleClipView::ticksToPixels(double ticks) const
+{
+	return static_cast<float>(ticks * pixelsPerBar() / TimePos::ticksPerBar());
+}
+
+
+
+
+int SampleClipView::fadeHandleAt(const QPoint& pos) const
+{
+	constexpr int HandleReach = 6;
+	constexpr int HandleHeight = 10;
+	if (pos.y() > HandleHeight) { return 0; }
+	const float inX = ticksToPixels(m_clip->fadeIn());
+	const float outX = width() - ticksToPixels(m_clip->fadeOut());
+	const float dIn = std::abs(pos.x() - inX);
+	const float dOut = std::abs(pos.x() - outX);
+	if (dIn <= HandleReach && dIn <= dOut) { return 1; }
+	if (dOut <= HandleReach) { return 2; }
+	return 0;
+}
+
+
+
+
+void SampleClipView::mouseMoveEvent(QMouseEvent* me)
+{
+	if (m_fadeDrag != 0)
+	{
+		const double ticks = std::max(0.0, me->pos().x() * static_cast<double>(TimePos::ticksPerBar()) / pixelsPerBar());
+		const tick_t length = m_clip->length();
+		if (m_fadeDrag == 1)
+		{
+			m_clip->setFades(std::clamp<tick_t>(static_cast<tick_t>(std::lround(ticks)), 0, length - m_clip->fadeOut()),
+				m_clip->fadeOut());
+		}
+		else
+		{
+			m_clip->setFades(m_clip->fadeIn(),
+				std::clamp<tick_t>(length - static_cast<tick_t>(std::lround(ticks)), 0, length - m_clip->fadeIn()));
+		}
+		const tick_t fade = m_fadeDrag == 1 ? m_clip->fadeIn() : m_clip->fadeOut();
+		const double ms = fade * 60000.0 / (Engine::getSong()->getTempo() * (DefaultTicksPerBar / 4.0));
+		textFloat()->setText(tr("%1 ms  (%2 Ticks)").arg(std::lround(ms)).arg(fade));
+		textFloat()->moveGlobal(this, QPoint(width() + 2, height() + 2));
+		return;
+	}
+	ClipView::mouseMoveEvent(me);
+	if (!me->buttons() && !fixedClips() && fadeHandleAt(me->pos()) != 0) { setCursor(Qt::SizeHorCursor); }
+}
+
+
+
+
+void SampleClipView::paintFades(QPainter& p, bool lightBackground)
+{
+	const int top = 1;
+	const int bottom = height() - 2;
+	const int h = bottom - top;
+	const float x0 = -m_paintPixmapXPosition;
+	const float w = width();
+	const double length = m_clip->length();
+	const double fadeIn = std::min<double>(m_clip->fadeIn(), length);
+	const double fadeOut = std::min<double>(m_clip->fadeOut(), length - fadeIn);
+
+	p.setRenderHint(QPainter::Antialiasing, true);
+	const auto drawFade = [&](bool in, double fadeTicks) {
+		if (fadeTicks <= 0) { return; }
+		const float fw = ticksToPixels(fadeTicks);
+		QPainterPath curve;
+		QPainterPath shade;
+		constexpr int Steps = 24;
+		for (int i = 0; i <= Steps; ++i)
+		{
+			const double t = static_cast<double>(i) / Steps;
+			const double pos = in ? t * fadeTicks : length - fadeTicks + t * fadeTicks;
+			const float gain = SampleClip::fadeGain(pos, length, in ? fadeTicks : 0, in ? 0 : fadeTicks);
+			const QPointF point(x0 + (in ? t * fw : w - fw + t * fw), bottom - gain * h);
+			if (i == 0) { curve.moveTo(point); } else { curve.lineTo(point); }
+		}
+		shade = curve;
+		if (in) { shade.lineTo(x0 + fw, top); shade.lineTo(x0, top); }
+		else { shade.lineTo(x0 + w, top); shade.lineTo(x0 + w - fw, top); }
+		shade.closeSubpath();
+		p.fillPath(shade, lightBackground ? QColor(0, 0, 0, 90) : QColor(0, 0, 0, 130));
+		p.setPen(QPen(lightBackground ? QColor(20, 20, 20, 230) : QColor(255, 255, 255, 210), 1.4));
+		p.drawPath(curve);
+	};
+	drawFade(true, fadeIn);
+	drawFade(false, fadeOut);
+
+	// handles
+	p.setPen(lightBackground ? QColor(20, 20, 20) : QColor(255, 255, 255));
+	p.setBrush(lightBackground ? QColor(255, 255, 255) : QColor(40, 40, 40));
+	const float inX = x0 + ticksToPixels(fadeIn);
+	const float outX = x0 + w - ticksToPixels(fadeOut);
+	p.drawRect(QRectF(std::clamp(inX - 3.f, x0 + 1.f, x0 + w - 7.f), top + 1, 6, 6));
+	p.drawRect(QRectF(std::clamp(outX - 3.f, x0 + 1.f, x0 + w - 7.f), top + 1, 6, 6));
+	p.setBrush(Qt::NoBrush);
+	p.setRenderHint(QPainter::Antialiasing, false);
 }
 
 
@@ -300,6 +463,8 @@ void SampleClipView::paintEvent( QPaintEvent * pe )
 	QString name = PathUtil::cleanName(m_clip->m_sample.sampleFile());
 	paintTextLabel(name, p);
 	paintLinkMarker(p);
+	// Custom: on top of the label, so the handles are always reachable
+	if (!fixedClips()) { paintFades(p, c.lightness() > 110); }
 
 	// disable antialiasing for borders, since its not needed
 	p.setRenderHint( QPainter::Antialiasing, false );
@@ -355,8 +520,19 @@ void SampleClipView::paintEvent( QPaintEvent * pe )
 
 void SampleClipView::reverseSample()
 {
-	m_clip->m_sample.setReversed(!m_clip->m_sample.reversed());
-	m_clip->setStartTimeOffset(m_clip->length() - m_clip->startTimeOffset() - m_clip->sampleLength());
+	// Custom: all selected sample clips, as one undo step
+	for (const auto clipView : getClickedClips())
+	{
+		auto view = dynamic_cast<SampleClipView*>(clipView);
+		if (!view) { continue; }
+		auto clip = view->m_clip;
+		clip->addJournalCheckPoint();
+		clip->m_sample.setReversed(!clip->m_sample.reversed());
+		clip->setStartTimeOffset(clip->length() - clip->startTimeOffset() - clip->sampleLength());
+		// the fades stay at their clip borders
+		emit clip->wasReversed();
+		if (view != this) { view->update(); }
+	}
 	Engine::getSong()->setModified();
 	update();
 }

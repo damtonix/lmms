@@ -169,6 +169,9 @@ protected:
 		Mute
 	};
 
+	//! Custom: the shared text bubble for subclasses
+	static TextFloat* textFloat() { return s_textFloat; }
+
 	TrackView * m_trackView;
 	TimePos m_initialClipPos;
 	TimePos m_initialClipEnd;

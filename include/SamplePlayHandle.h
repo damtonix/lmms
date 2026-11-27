@@ -80,6 +80,12 @@ private:
 	PatternTrack* m_patternTrack = nullptr;
 	bool m_doneMayReturnTrue = true;
 	bool m_ownAudioBusHandle = false;
+	// Custom: fades of the sample clip (output frames, measured from the clip start)
+	bool m_hasFades = false;
+	double m_clipBasePos = 0;
+	double m_clipLength = 0;
+	double m_fadeIn = 0;
+	double m_fadeOut = 0;
 } ;
 
 

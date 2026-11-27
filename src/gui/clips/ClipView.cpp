@@ -52,6 +52,7 @@
 #include "MidiClipView.h"
 #include "PatternClip.h"
 #include "PatternStore.h"
+#include "ProjectJournal.h"
 #include "Song.h"
 #include "SongEditor.h"
 #include "StringPairDrag.h"
@@ -1176,6 +1177,8 @@ void ClipView::contextMenuEvent( QContextMenuEvent * cme )
 					const auto type = clipView->getClip()->getTrack()->type();
 					if (type == Track::Type::Instrument || type == Track::Type::Sample) { clips.emplace_back(clipView->getClip()); }
 				}
+				// all bounces are one undo step (the renders run their own event loops)
+				ProjectJournal::Group journalGroup;
 				for (const auto& clip : clips)
 				{
 					if (clip) { getGUI()->mainWindow()->bounceClip(clip); }

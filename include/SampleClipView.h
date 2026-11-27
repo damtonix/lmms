@@ -55,6 +55,7 @@ protected:
 	void constructContextMenu(QMenu* cm) override;
 	void mousePressEvent( QMouseEvent * _me ) override;
 	void mouseReleaseEvent( QMouseEvent * _me ) override;
+	void mouseMoveEvent(QMouseEvent* me) override;
 	void dragEnterEvent( QDragEnterEvent * _dee ) override;
 	void dropEvent( QDropEvent * _de ) override;
 	void mouseDoubleClickEvent( QMouseEvent * ) override;
@@ -62,6 +63,12 @@ protected:
 
 
 private:
+	//! Custom: fade handles at the top corners (0 = none, 1 = fade in, 2 = fade out)
+	int fadeHandleAt(const QPoint& pos) const;
+	float ticksToPixels(double ticks) const;
+	void paintFades(QPainter& p, bool lightBackground);
+	int m_fadeDrag = 0;
+
 	SampleClip * m_clip;
 	QPixmap m_paintPixmap;
 	long m_paintPixmapXPosition;

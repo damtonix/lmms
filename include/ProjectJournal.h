@@ -57,6 +57,20 @@ public:
 
 	void addJournalCheckPoint( JournallingObject *jo );
 
+	//! Custom: all checkpoints between beginGroup() and endGroup() are undone/redone in one step.
+	//! Without an explicit group, checkpoints added in the same event loop pass (one user action,
+	//! e.g. a context menu entry acting on several clips) are grouped automatically.
+	void beginGroup();
+	void endGroup();
+	//! RAII helper for beginGroup()/endGroup()
+	struct Group
+	{
+		Group();
+		~Group();
+		Group(const Group&) = delete;
+		Group& operator=(const Group&) = delete;
+	};
+
 	bool isJournalling() const
 	{
 		return m_journalling;
@@ -108,13 +122,15 @@ private:
 
 	struct CheckPoint
 	{
-		CheckPoint( jo_id_t initID = 0, const DataFile& initData = DataFile( DataFile::Type::JournalData ) ) :
+		CheckPoint( jo_id_t initID = 0, const DataFile& initData = DataFile( DataFile::Type::JournalData ), int initGroup = 0 ) :
 			joID( initID ),
-			data( initData )
+			data( initData ),
+			group( initGroup )
 		{
 		}
 		jo_id_t joID;
 		DataFile data;
+		int group; //!< Custom: checkpoints with the same (non-zero) group are undone together
 	} ;
 	using CheckPointStack = QStack<CheckPoint>;
 
@@ -125,6 +141,15 @@ private:
 	CheckPointStack m_redoCheckPoints;
 
 	bool m_journalling;
+
+	// Custom: grouping
+	int currentGroup();
+	bool restoreStep(CheckPointStack& from, CheckPointStack& to);
+	int m_groupCounter = 0;
+	int m_explicitGroupDepth = 0;
+	int m_explicitGroup = 0;
+	int m_autoGroup = 0;
+	bool m_autoGroupOpen = false;
 
 } ;
 

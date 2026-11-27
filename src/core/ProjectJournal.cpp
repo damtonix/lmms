@@ -28,6 +28,10 @@
 #include "ProjectJournal.h"
 #include "Engine.h"
 #include "JournallingObject.h"
+
+#include <QCoreApplication>
+#include <QThread>
+#include <QTimer>
 #include "lmms_math.h"
 #include "Song.h"
 #include "AutomationClip.h"
@@ -52,59 +56,98 @@ ProjectJournal::ProjectJournal() :
 
 
 
+bool ProjectJournal::restoreStep(CheckPointStack& from, CheckPointStack& to)
+{
+	// Custom: one step = all checkpoints of the same group (or a single ungrouped one)
+	int group = -1;
+	bool restored = false;
+	while (!from.isEmpty())
+	{
+		if (group >= 0 && (group == 0 || from.top().group != group)) { break; }
+		CheckPoint c = from.pop();
+		if (group < 0) { group = c.group; }
+		JournallingObject* jo = m_joIDs[c.joID];
+		if (!jo)
+		{
+			// object gone: skip it, but an ungrouped step is not finished yet
+			if (c.group == 0) { group = -1; }
+			continue;
+		}
+
+		DataFile curState( DataFile::Type::JournalData );
+		jo->saveState( curState, curState.content() );
+		to.push( CheckPoint( c.joID, curState, c.group ) );
+
+		bool prev = isJournalling();
+		setJournalling( false );
+		jo->restoreState( c.data.content().firstChildElement() );
+		setJournalling( prev );
+		Engine::getSong()->setModified();
+
+		// loading AutomationClip connections correctly
+		if (!c.data.content().elementsByTagName("automationclip").isEmpty())
+		{
+			AutomationClip::resolveAllIDs();
+		}
+		restored = true;
+	}
+	return restored;
+}
+
+
+
+
 void ProjectJournal::undo()
 {
-	while( !m_undoCheckPoints.isEmpty() )
-	{
-		CheckPoint c = m_undoCheckPoints.pop();
-		JournallingObject *jo = m_joIDs[c.joID];
-
-		if( jo )
-		{
-			DataFile curState( DataFile::Type::JournalData );
-			jo->saveState( curState, curState.content() );
-			m_redoCheckPoints.push( CheckPoint( c.joID, curState ) );
-
-			bool prev = isJournalling();
-			setJournalling( false );
-			jo->restoreState( c.data.content().firstChildElement() );
-			setJournalling( prev );
-			Engine::getSong()->setModified();
-
-			// loading AutomationClip connections correctly
-			if (!c.data.content().elementsByTagName("automationclip").isEmpty())
-			{
-				AutomationClip::resolveAllIDs();
-			}
-			break;
-		}
-	}
+	restoreStep(m_undoCheckPoints, m_redoCheckPoints);
 }
 
 
 
 void ProjectJournal::redo()
 {
-	while( !m_redoCheckPoints.isEmpty() )
-	{
-		CheckPoint c = m_redoCheckPoints.pop();
-		JournallingObject *jo = m_joIDs[c.joID];
-
-		if( jo )
-		{
-			DataFile curState( DataFile::Type::JournalData );
-			jo->saveState( curState, curState.content() );
-			m_undoCheckPoints.push( CheckPoint( c.joID, curState ) );
-
-			bool prev = isJournalling();
-			setJournalling( false );
-			jo->restoreState( c.data.content().firstChildElement() );
-			setJournalling( prev );
-			Engine::getSong()->setModified();
-			break;
-		}
-	}
+	restoreStep(m_redoCheckPoints, m_undoCheckPoints);
 }
+
+
+
+int ProjectJournal::currentGroup()
+{
+	if (m_explicitGroupDepth > 0) { return m_explicitGroup; }
+	// automatic group: everything added until control returns to the event loop
+	auto app = QCoreApplication::instance();
+	if (app == nullptr || QThread::currentThread() != app->thread()) { return 0; }
+	if (!m_autoGroupOpen)
+	{
+		m_autoGroupOpen = true;
+		m_autoGroup = ++m_groupCounter;
+		QTimer::singleShot(0, app, [this] { m_autoGroupOpen = false; });
+	}
+	return m_autoGroup;
+}
+
+
+
+void ProjectJournal::beginGroup()
+{
+	if (m_explicitGroupDepth++ == 0) { m_explicitGroup = ++m_groupCounter; }
+}
+
+
+
+void ProjectJournal::endGroup()
+{
+	if (m_explicitGroupDepth > 0) { --m_explicitGroupDepth; }
+	// the next checkpoint starts a new automatic group
+	m_autoGroupOpen = false;
+}
+
+
+
+ProjectJournal::Group::Group() { Engine::projectJournal()->beginGroup(); }
+ProjectJournal::Group::~Group() { Engine::projectJournal()->endGroup(); }
+
+
 
 bool ProjectJournal::canUndo() const
 {
@@ -127,7 +170,7 @@ void ProjectJournal::addJournalCheckPoint( JournallingObject *jo )
 		DataFile dataFile( DataFile::Type::JournalData );
 		jo->saveState( dataFile, dataFile.content() );
 
-		m_undoCheckPoints.push( CheckPoint( jo->id(), dataFile ) );
+		m_undoCheckPoints.push( CheckPoint( jo->id(), dataFile, currentGroup() ) );
 		if( m_undoCheckPoints.size() > MAX_UNDO_STATES )
 		{
 			m_undoCheckPoints.remove( 0, m_undoCheckPoints.size() - MAX_UNDO_STATES );

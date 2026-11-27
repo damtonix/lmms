@@ -13,8 +13,12 @@
 #define LMMS_GUI_SNAPSHOT_DIALOG_H
 
 #include <QDialog>
+#include <QDomDocument>
+#include <memory>
 
+class QComboBox;
 class QPushButton;
+class QTextBrowser;
 class QSpinBox;
 class QTreeWidget;
 
@@ -29,6 +33,12 @@ public:
 private:
 	void refresh();
 	void restoreSelected();
+	void showDifferences();
+	const QDomDocument* currentState();
+
+	std::unique_ptr<QDomDocument> m_current;
+	QComboBox* m_compareMode;
+	QTextBrowser* m_diff;
 
 	QString m_projectFile;
 	QTreeWidget* m_list;

@@ -35,6 +35,7 @@
 #include "DataFile.h"
 #include "Engine.h"
 #include "GuiApplication.h"
+#include "ProjectJournal.h"
 #include "Song.h"
 #include "SongEditor.h"
 #include "Track.h"
@@ -493,6 +494,8 @@ void TrackDraftsPanel::startDrag(int index, bool keep)
 
 	const auto clipsBefore = m_track->getClips().size();
 	const QPointer<TrackDraftsPanel> self(this);
+	// the drop (on whatever track) and removing the draft are one undo step
+	ProjectJournal::Group journalGroup;
 	const auto result = drag->exec(Qt::CopyAction, Qt::CopyAction);
 	if (self.isNull() || result == Qt::IgnoreAction || keep) { return; }
 	// moved out: the draft is gone. The drop already made an undo step for its track;

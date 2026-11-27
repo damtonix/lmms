@@ -85,6 +85,13 @@ public:
 	void setIsPlaying(bool isPlaying);
 	void setSampleBuffer(std::shared_ptr<const SampleBuffer> sb);
 
+	//! Custom: fade in / fade out at the clip borders (ticks, clamped to the clip length)
+	tick_t fadeIn() const { return m_fadeIn; }
+	tick_t fadeOut() const { return m_fadeOut; }
+	void setFades(tick_t fadeIn, tick_t fadeOut);
+	//! gain of the fades at a position inside the clip (ticks from the clip start)
+	static float fadeGain(double posInClip, double clipLength, double fadeIn, double fadeOut);
+
 	SampleClip* clone() override
 	{
 		return new SampleClip(*this);
@@ -107,6 +114,8 @@ private:
 	BoolModel m_recordModel;
 	bool m_isPlaying;
 	int m_startFrameOffset;
+	tick_t m_fadeIn = 0;
+	tick_t m_fadeOut = 0;
 
 	friend class gui::SampleClipView;
 

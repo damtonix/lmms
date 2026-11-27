@@ -24,6 +24,10 @@
  
 #include "SampleClip.h"
 
+#include <cmath>
+
+#include <algorithm>
+
 #include <QDomElement>
 #include <QFileInfo>
 
@@ -79,7 +83,9 @@ SampleClip::SampleClip(const SampleClip& orig) :
 	m_sample(orig.m_sample),
 	m_sampleThumbnailCache(orig.m_sampleThumbnailCache),
 	m_isPlaying(orig.m_isPlaying),
-	m_startFrameOffset(orig.m_startFrameOffset)
+	m_startFrameOffset(orig.m_startFrameOffset),
+	m_fadeIn(orig.m_fadeIn),
+	m_fadeOut(orig.m_fadeOut)
 {
 	m_missingSampleFile = orig.m_missingSampleFile;
 	saveJournallingState( false );
@@ -329,6 +335,8 @@ void SampleClip::saveSettings( QDomDocument & _doc, QDomElement & _this )
 		_this.setAttribute("reversed", "true");
 	}
 	if (isLinked()) { _this.setAttribute("link", linkId()); }
+	if (m_fadeIn > 0) { _this.setAttribute("fadein", m_fadeIn); }
+	if (m_fadeOut > 0) { _this.setAttribute("fadeout", m_fadeOut); }
 	// TODO: start- and end-frame
 }
 
@@ -372,12 +380,49 @@ void SampleClip::loadSettings( const QDomElement & _this )
 		setColor(QColor{_this.attribute("color")});
 	}
 
-	if(_this.hasAttribute("reversed"))
+	// Custom: also un-reverse (undo of "reverse" restores a state without the attribute)
+	const bool reversed = _this.hasAttribute("reversed");
+	if (reversed != m_sample.reversed())
 	{
-		m_sample.setReversed(true);
+		m_sample.setReversed(reversed);
 		emit wasReversed(); // tell SampleClipView to update the view
 	}
 	setLinkId(_this.attribute("link"));
+	setFades(_this.attribute("fadein", "0").toInt(), _this.attribute("fadeout", "0").toInt());
+}
+
+
+
+
+void SampleClip::setFades(tick_t fadeIn, tick_t fadeOut)
+{
+	const tick_t len = std::max<tick_t>(0, length());
+	fadeIn = std::clamp<tick_t>(fadeIn, 0, len);
+	fadeOut = std::clamp<tick_t>(fadeOut, 0, len - fadeIn);
+	if (fadeIn == m_fadeIn && fadeOut == m_fadeOut) { return; }
+	m_fadeIn = fadeIn;
+	m_fadeOut = fadeOut;
+	emit dataChanged();
+}
+
+
+
+
+float SampleClip::fadeGain(double posInClip, double clipLength, double fadeIn, double fadeOut)
+{
+	// equal-power curves (sin / cos quarter wave)
+	constexpr double halfPi = 1.5707963267948966;
+	double gain = 1.0;
+	if (fadeIn > 0 && posInClip < fadeIn)
+	{
+		gain *= posInClip <= 0 ? 0.0 : std::sin(halfPi * posInClip / fadeIn);
+	}
+	const double toEnd = clipLength - posInClip;
+	if (fadeOut > 0 && toEnd < fadeOut)
+	{
+		gain *= toEnd <= 0 ? 0.0 : std::sin(halfPi * toEnd / fadeOut);
+	}
+	return static_cast<float>(gain);
 }
 
 

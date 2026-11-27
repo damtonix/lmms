@@ -27,6 +27,8 @@
 #include "AudioBusHandle.h"
 #include "Engine.h"
 #include "PatternTrack.h"
+#include <algorithm>
+
 #include "SampleClip.h"
 #include "SampleTrack.h"
 
@@ -60,6 +62,21 @@ SamplePlayHandle::SamplePlayHandle( SampleClip* clip ) :
 {
 	m_track = clip->getTrack();
 	setAudioBusHandle(((SampleTrack *)clip->getTrack())->audioBusHandle());
+
+	// Custom: fades (in output frames, from the clip start; the sample starts startTimeOffset after it)
+	if (clip->fadeIn() > 0 || clip->fadeOut() > 0)
+	{
+		const double framesPerTick = Engine::framesPerTick();
+		const double rateRatio = static_cast<double>(Engine::audioEngine()->outputSampleRate())
+			/ std::max<double>(1, m_sample->sampleRate());
+		const double length = static_cast<double>(clip->length()) * framesPerTick;
+		const double fadeIn = std::min<double>(clip->fadeIn() * framesPerTick, length);
+		m_hasFades = true;
+		m_clipLength = length;
+		m_fadeIn = fadeIn;
+		m_fadeOut = std::min<double>(clip->fadeOut() * framesPerTick, length - fadeIn);
+		m_clipBasePos = m_sample->startFrame() * rateRatio + static_cast<double>(clip->startTimeOffset()) * framesPerTick;
+	}
 }
 
 
@@ -109,6 +126,20 @@ void SamplePlayHandle::play( SampleFrame* buffer )
 		if (!m_sample->play(workingBuffer, &m_state, frames))
 		{
 			zeroSampleFrames(workingBuffer, frames);
+		}
+		else if (m_hasFades)
+		{
+			const double first = m_clipBasePos + m_frame;
+			const double last = first + frames;
+			if (first < m_fadeIn || last > m_clipLength - m_fadeOut)
+			{
+				for (f_cnt_t i = 0; i < frames; ++i)
+				{
+					const float gain = SampleClip::fadeGain(first + i, m_clipLength, m_fadeIn, m_fadeOut);
+					workingBuffer[i][0] *= gain;
+					workingBuffer[i][1] *= gain;
+				}
+			}
 		}
 	}
 
