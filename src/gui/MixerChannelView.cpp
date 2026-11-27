@@ -104,7 +104,7 @@ MixerChannelView::MixerChannelView(QWidget* parent, MixerView* mixerView, int ch
 
 	m_renameLineEdit = new QLineEdit{mixerName, nullptr};
 	m_renameLineEdit->setFixedWidth(65);
-	m_renameLineEdit->setFont(adjustedToPixelSize(font(), SMALL_FONT_SIZE));
+	m_renameLineEdit->setFont(adjustedToPixelSize(font(), 12));
 	m_renameLineEdit->setReadOnly(true);
 	m_renameLineEdit->installEventFilter(this);
 
