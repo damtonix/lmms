@@ -24,6 +24,8 @@
 
 #include "MainWindow.h"
 
+#include <algorithm>
+
 #include <sndfile.h>
 
 #include <QApplication>
@@ -1784,8 +1786,7 @@ bool MainWindow::renderTracksSolo(const std::vector<Track*>& roots, const QStrin
 	Song* song = Engine::getSong();
 
 	// Render only these tracks (with everything below them, e.g. group members): mute every other
-	// audio track (automation keeps running), keep the parent group(s) audible and temporarily
-	// unfreeze frozen tracks so their instruments play
+	// audio track (automation keeps running) and keep the parent group(s) audible
 	const bool journalling = Engine::projectJournal()->isJournalling();
 	Engine::projectJournal()->setJournalling(false);
 	const bool propagation = Track::suspendMutePropagation(true);
@@ -1814,7 +1815,10 @@ bool MainWindow::renderTracksSolo(const std::vector<Track*>& roots, const QStrin
 			else if (isBelow(root, other)) { audible = true; } // parent group of the root
 		}
 		other->setMuted(!audible);
-		if (audible && other->isFrozen())
+		// a frozen (deactivated) track is only woken up when it is rendered itself (bounce of a frozen
+		// track); frozen members of a group stay silent, like in the normal mix
+		const bool isRoot = std::find(roots.begin(), roots.end(), other) != roots.end();
+		if (isRoot && other->isFrozen())
 		{
 			savedFrozen.emplace_back(other, true);
 			other->setFrozen(false);
@@ -1950,27 +1954,9 @@ void MainWindow::freezeTrack(Track* track)
 	Song* song = Engine::getSong();
 	if (track == nullptr || track->trackContainer() != song || track->isFrozen()) { return; }
 
-	// render the track automatically into the working directory
-	const QString dir = ConfigManager::inst()->workingDir() + "frozen/";
-	QDir().mkpath(dir);
-	QString base = (song->projectFileName().isEmpty() ? tr("Projekt") : QFileInfo(song->projectFileName()).completeBaseName())
-		+ "-" + track->name();
-	base.replace(QRegularExpression(FILENAME_FILTER), "_");
-	const QString path = dir + base + "-" + track->uid().left(8) + ".wav";
-
-	if (!renderTrackSolo(track, path, tr("Einfrieren"), true)) { return; }
-
-	// hidden sample track that plays the frozen audio instead of the instrument
-	auto proxy = dynamic_cast<SampleTrack*>(Track::create(Track::Type::Sample, song));
-	if (proxy == nullptr) { return; }
-	proxy->setName(track->name() + tr(" (eingefroren)"));
-	proxy->setFreezeProxyOf(track->uid());
-	if (auto clip = dynamic_cast<SampleClip*>(proxy->createClip(TimePos(0)))) { clip->setSampleFile(path); }
-
+	// Freezing only deactivates the track: instrument and track FX are not processed anymore and the
+	// track is silent. Nothing is rendered - to keep the sound, bounce it manually first.
 	track->setFrozen(true);
-	auto editor = getGUI()->songEditor()->m_editor;
-	editor->createTrackView(proxy);
-	editor->realignTracks();
 	song->setModified();
 }
 

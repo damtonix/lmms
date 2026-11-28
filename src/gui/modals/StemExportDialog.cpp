@@ -178,9 +178,10 @@ void StemExportDialog::rebuildList()
 		QString label = track->name();
 		if (track->type() == Track::Type::Group) { label = tr("%1  (Gruppe)").arg(label); }
 		if (track->isMutedSelf()) { label += tr("  [stumm]"); }
+		else if (track->isFrozen()) { label += tr("  [eingefroren]"); }
 		auto item = new QListWidgetItem(label, m_list);
 		item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
-		item->setCheckState(track->isMutedSelf() ? Qt::Unchecked : Qt::Checked);
+		item->setCheckState(track->isMutedSelf() || track->isFrozen() ? Qt::Unchecked : Qt::Checked);
 	}
 }
 

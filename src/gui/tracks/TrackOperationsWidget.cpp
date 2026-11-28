@@ -339,7 +339,7 @@ void TrackOperationsWidget::addGroupMenu(QMenu* toMenu)
 	{
 		toMenu->addSeparator();
 		toMenu->addAction(embed::getIconPixmap(track->isFrozen() ? "freeze_off" : "freeze", 16, 16),
-			track->isFrozen() ? tr("Spur auftauen") : tr("Spur einfrieren (als Audio, Instrument ruht)"),
+			track->isFrozen() ? tr("Spur auftauen") : tr("Spur einfrieren (deaktivieren, stumm)"),
 			this, [track] {
 				if (track->isFrozen()) { getGUI()->mainWindow()->unfreezeTrack(track); }
 				else { getGUI()->mainWindow()->freezeTrack(track); }
