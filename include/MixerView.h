@@ -25,6 +25,7 @@
 #ifndef LMMS_GUI_MIXER_VIEW_H
 #define LMMS_GUI_MIXER_VIEW_H
 
+#include <vector>
 #include <QWidget>
 
 #include "MixerChannelView.h"
@@ -97,6 +98,9 @@ public:
 	// make sure the display syncs up with the mixer.
 	// useful for loading projects
 	void refreshDisplay();
+	//! Custom (PtH-LMMS): after Mixer::reorderChannels (order[new] = old) only move the existing views
+	//! (much cheaper than refreshDisplay); with an identity order it just puts every view into its area
+	void reorderChannelViews(const std::vector<int>& order);
 
 public slots:
 	int addNewChannel();

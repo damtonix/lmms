@@ -230,6 +230,37 @@ QWidget* MixerView::areaWidgetFor(int index) const
 	return index > 0 && m_mixer->mixerChannel(index)->isTrackChannel() ? m_trackChannelAreaWidget : m_channelAreaWidget;
 }
 
+void MixerView::reorderChannelViews(const std::vector<int>& order)
+{
+	if (order.size() != static_cast<std::size_t>(m_mixerChannelViews.size())
+		|| m_mixerChannelViews.size() != getMixer()->numChannels())
+	{
+		refreshDisplay();
+		return;
+	}
+	QVector<MixerChannelView*> views(m_mixerChannelViews.size());
+	for (std::size_t n = 0; n < order.size(); ++n) { views[n] = m_mixerChannelViews[order[n]]; }
+	m_mixerChannelViews = views;
+
+	setUpdatesEnabled(false);
+	for (int i = 1; i < m_mixerChannelViews.size(); ++i)
+	{
+		chLayout->removeWidget(m_mixerChannelViews[i]);
+		m_trackChLayout->removeWidget(m_mixerChannelViews[i]);
+	}
+	for (int i = 1; i < m_mixerChannelViews.size(); ++i)
+	{
+		m_mixerChannelViews[i]->setChannelIndex(i);
+		layoutFor(i)->addWidget(m_mixerChannelViews[i]); // reparents into the right area
+	}
+	m_channelAreaWidget->adjustSize();
+	m_trackChannelAreaWidget->adjustSize();
+	for (int i = 0; i < m_mixerChannelViews.size(); ++i) { updateMixerChannel(i); }
+	updateMaxChannelSelector();
+	setUpdatesEnabled(true);
+}
+
+
 bool MixerView::sendAllowed(int from, int to) const
 {
 	if (from == to || from < 0 || to < 0) { return false; }

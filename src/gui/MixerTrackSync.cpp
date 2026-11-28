@@ -9,6 +9,7 @@
 #include <map>
 #include <set>
 
+#include <QApplication>
 #include <QDomDocument>
 
 #include "AudioBusHandle.h"
@@ -159,7 +160,7 @@ void MixerTrackSync::watchTrack(Track* track)
 
 void MixerTrackSync::scheduleSync()
 {
-	if (!m_running) { m_timer.start(); }
+	if (!m_running) { m_timer.start(30); }
 }
 
 
@@ -167,6 +168,12 @@ void MixerTrackSync::sync()
 {
 	auto song = Engine::getSong();
 	if (m_running || song->isLoadingProject() || song->isExporting()) { return; }
+	if (QApplication::mouseButtons() != Qt::NoButton)
+	{
+		// a drag (moving tracks, groups, ...) is going on: sort the mixer once it is dropped
+		m_timer.start(100);
+		return;
+	}
 	m_running = true;
 	const bool journalling = Engine::projectJournal()->isJournalling();
 	Engine::projectJournal()->setJournalling(false);
@@ -331,10 +338,15 @@ void MixerTrackSync::sync()
 		mx->reorderChannels(order);
 		structure = true;
 	}
+	else if (structure)
+	{
+		// channels added/removed but nothing to sort: still put the views into their areas
+		for (std::size_t n = 0; n < order.size(); ++n) { order[n] = static_cast<int>(n); }
+	}
 
 	if (structure)
 	{
-		m_view->refreshDisplay();
+		m_view->reorderChannelViews(order);
 		if (selected != nullptr) { m_view->setCurrentMixerChannel(selected->index()); }
 		if (!song->isLoadingProject()) { song->setModified(); }
 	}
