@@ -233,11 +233,7 @@ QWidget* MixerView::areaWidgetFor(int index) const
 bool MixerView::sendAllowed(int from, int to) const
 {
 	if (from == to || from < 0 || to < 0) { return false; }
-	const auto source = m_mixer->mixerChannel(from);
-	const auto target = m_mixer->mixerChannel(to);
-	// independent channels and master can always be fed; a track channel only by the members of its group
-	if (!target->isTrackChannel()) { return true; }
-	return source->isTrackChannel() && source->m_busOwnerUid == target->m_ownerUid;
+	return MixerTrackSync::sendAllowed(m_mixer->mixerChannel(from), m_mixer->mixerChannel(to));
 }
 
 

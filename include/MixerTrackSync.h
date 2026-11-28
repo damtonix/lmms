@@ -12,6 +12,7 @@
 namespace lmms
 {
 class Track;
+class MixerChannel;
 }
 
 namespace lmms::gui
@@ -39,6 +40,11 @@ public:
 
 	//! the group whose channel is the fixed bus of this track (nearest group above it), or nullptr
 	static Track* busGroupOf(const Track* track);
+	//! may channel `from` send to channel `to`? (track channels: only from the members of their group;
+	//! group channels also from independent channels)
+	static bool sendAllowed(const MixerChannel* from, const MixerChannel* to);
+	//! the group whose bus this independent channel sends to (first one), or nullptr
+	static Track* groupFedBy(const MixerChannel* ch);
 	//! true for tracks that own a channel
 	static bool ownsChannel(const Track* track);
 	//! the track (song or pattern editor) with this uid, or nullptr

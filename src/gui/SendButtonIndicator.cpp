@@ -37,6 +37,7 @@ void SendButtonIndicator::mousePressEvent(QMouseEvent* e)
 	}
 
 	m_mv->updateMixerChannel(m_parent->channelIndex());
+	m_mv->updateMixerChannel(from); // Custom: the sender may show the group it feeds
 	updateLightStatus();
 }
 

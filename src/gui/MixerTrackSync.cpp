@@ -92,6 +92,34 @@ Track* MixerTrackSync::trackByUid(const QString& uid)
 }
 
 
+bool MixerTrackSync::sendAllowed(const MixerChannel* from, const MixerChannel* to)
+{
+	if (from == to) { return false; }
+	// independent channels and master can always be fed
+	if (!to->isTrackChannel()) { return true; }
+	// a track channel: the members of its group feed it ...
+	if (from->isTrackChannel()) { return from->m_busOwnerUid == to->m_ownerUid; }
+	// ... and independent channels may send back into a group bus (not into an instrument/sample channel)
+	if (from->index() == 0) { return false; }
+	const auto target = trackByUid(to->m_ownerUid);
+	return target != nullptr && target->type() == Track::Type::Group;
+}
+
+
+Track* MixerTrackSync::groupFedBy(const MixerChannel* ch)
+{
+	if (ch->isTrackChannel() || ch->index() == 0) { return nullptr; }
+	for (auto route : ch->m_sends)
+	{
+		const auto receiver = route->receiver();
+		if (!receiver->isTrackChannel()) { continue; }
+		const auto track = trackByUid(receiver->m_ownerUid);
+		if (track != nullptr && track->type() == Track::Type::Group) { return track; }
+	}
+	return nullptr;
+}
+
+
 Track* MixerTrackSync::busGroupOf(const Track* track)
 {
 	int guard = 0;
@@ -247,7 +275,7 @@ void MixerTrackSync::sync()
 		if (ch->color() != track->color()) { ch->setColor(track->color()); cosmetic = true; }
 	}
 
-	// 4. track channels only receive from the members of their group
+	// 4. track channels only receive from the members of their group (group busses also from independent channels)
 	for (int i = 0; i < mx->numChannels(); ++i)
 	{
 		auto ch = mx->mixerChannel(i);
@@ -256,8 +284,7 @@ void MixerTrackSync::sync()
 		{
 			const auto receiver = route->receiver();
 			if (!receiver->isTrackChannel()) { continue; }
-			const bool allowed = ch->isTrackChannel() && ch->m_busOwnerUid == receiver->m_ownerUid;
-			if (!allowed)
+			if (!sendAllowed(ch, receiver))
 			{
 				mx->deleteChannelSend(route);
 				structure = true;

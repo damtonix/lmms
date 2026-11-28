@@ -258,6 +258,12 @@ void MixerChannelView::paintEvent(QPaintEvent*)
 		const auto lcd = m_channelNumberLcd->geometry();
 		painter.drawPixmap(lcd.center().x() - 7, lcd.bottom() + 5, embed::getIconPixmap(icon, 14, 14));
 	}
+	else if (const auto group = MixerTrackSync::groupFedBy(channel))
+	{
+		// independent channel sending back into a group bus: dashed stripe in the group color
+		const QColor groupColor = group->color().value_or(QColor(143, 166, 192));
+		for (int y = 2; y < height - 2; y += 8) { painter.fillRect(2, y, 4, std::min(5, height - 2 - y), groupColor); }
+	}
 }
 
 void MixerChannelView::mousePressEvent(QMouseEvent*)
