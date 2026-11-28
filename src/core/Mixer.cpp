@@ -732,7 +732,7 @@ void Mixer::masterMix( SampleFrame* _buf )
 	AudioEngineWorkerThread::resetJobQueue( AudioEngineWorkerThread::JobQueue::OperationMode::Dynamic );
 	for( MixerChannel * ch : m_mixerChannels )
 	{
-		ch->m_muted = ch->m_muteModel.value();
+		ch->m_muted = ch->m_muteModel.value() || ch->m_frozen; // Custom: frozen channels are skipped too
 		if( ch->m_muted ) // instantly "process" muted channels
 		{
 			ch->processed();

@@ -252,7 +252,12 @@ void MixerChannelView::paintEvent(QPaintEvent*)
 			if (isGroup) { painter.fillRect(2, 2, width - 4, 5, groupColor); }   // bar on top: the group bus itself
 			else { painter.fillRect(2, 2, 4, height - 4, groupColor); }          // stripe on the left: member
 		}
-		const char* icon = isGroup ? "folder"
+		if (channel->m_frozen)
+		{
+			// frozen with its track: icy veil, freeze icon instead of the track type
+			painter.fillRect(rect().adjusted(2, 2, -2, -2), QColor(120, 180, 255, 45));
+		}
+		const char* icon = channel->m_frozen ? "freeze" : isGroup ? "folder"
 			: track->type() == Track::Type::Sample ? "sample_track" : "instrument_track";
 		// below the channel number, above the name
 		const auto lcd = m_channelNumberLcd->geometry();

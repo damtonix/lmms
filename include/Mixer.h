@@ -67,6 +67,9 @@ public:
 	QMutex m_lock;
 	bool m_queued; // are we queued up for rendering yet?
 	bool m_muted; // are we muted? updated per period so we don't have to call m_muteModel.value() twice
+	//! Custom (PtH-LMMS): the owning track is frozen -> channel is skipped like a muted one (no FX, 0 CPU).
+	//! Runtime only (derived from the track), set by gui::MixerTrackSync
+	std::atomic<bool> m_frozen{false};
 
 	// pointers to other channels that this one sends to
 	MixerRouteVector m_sends;

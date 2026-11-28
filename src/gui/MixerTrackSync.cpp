@@ -146,6 +146,7 @@ void MixerTrackSync::watchTrack(Track* track)
 	connect(track, &Track::nameChanged, this, &MixerTrackSync::scheduleSync, Qt::UniqueConnection);
 	connect(track, &Track::colorChanged, this, &MixerTrackSync::scheduleSync, Qt::UniqueConnection);
 	connect(track, &Track::groupChanged, this, &MixerTrackSync::scheduleSync, Qt::UniqueConnection);
+	connect(track, &Track::frozenChanged, this, &MixerTrackSync::trackFrozenChanged, Qt::UniqueConnection);
 	if (auto model = channelModelOf(track))
 	{
 		connect(model, &IntModel::dataChanged, this, &MixerTrackSync::scheduleSync, Qt::UniqueConnection);
@@ -155,6 +156,24 @@ void MixerTrackSync::watchTrack(Track* track)
 		// effects arriving in the track (old project, preset) move to its channel
 		connect(fx, &EffectChain::dataChanged, this, &MixerTrackSync::scheduleSync, Qt::UniqueConnection);
 	}
+}
+
+
+bool MixerTrackSync::channelFrozenFor(const Track* track)
+{
+	return track->isFrozen() && track->freezeProxy() == nullptr;
+}
+
+
+void MixerTrackSync::trackFrozenChanged()
+{
+	// immediately (also while exporting: stem export thaws tracks for a moment)
+	auto track = qobject_cast<Track*>(sender());
+	if (track == nullptr) { return; }
+	const int idx = Engine::mixer()->channelOwnedBy(track->uid());
+	if (idx <= 0) { return; }
+	Engine::mixer()->mixerChannel(idx)->m_frozen = channelFrozenFor(track);
+	m_view->updateMixerChannel(idx);
 }
 
 
@@ -299,6 +318,7 @@ void MixerTrackSync::sync()
 			ch->m_busOwnerUid = expectedBus;
 			structure = true;
 		}
+		if (const bool frozen = channelFrozenFor(track); ch->m_frozen != frozen) { ch->m_frozen = frozen; cosmetic = true; }
 		if (ch->m_name != track->name()) { setChannelName(ch, track->name()); cosmetic = true; }
 		if (ch->color() != track->color()) { ch->setColor(track->color()); cosmetic = true; }
 	}

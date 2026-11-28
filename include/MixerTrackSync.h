@@ -50,8 +50,13 @@ public:
 	//! the track (song or pattern editor) with this uid, or nullptr
 	static Track* trackByUid(const QString& uid);
 
+	//! Custom: the channel of a frozen track is frozen too (skipped in the mixer). Old projects with a
+	//! rendered freeze track keep the channel running, that track plays through it.
+	static bool channelFrozenFor(const Track* track);
+
 public slots:
 	void scheduleSync();
+	void trackFrozenChanged();
 	void sync();
 
 private:
