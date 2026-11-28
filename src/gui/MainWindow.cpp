@@ -2057,11 +2057,11 @@ void MainWindow::bounceClip(Clip* clip)
 	const TimePos end = clip->endPosition();
 	if (end <= begin) { return; }
 
-	// file next to the project ("<Projekt> Bounces"), otherwise in the user samples folder
+	// file in the folder "Bounces" inside the project folder, otherwise in the user samples folder
 	const QString& projectFileName = song->projectFileName();
 	const QString dir = projectFileName.isEmpty()
 		? ConfigManager::inst()->userSamplesDir() + "Bounces"
-		: QFileInfo(projectFileName).absolutePath() + "/" + QFileInfo(projectFileName).completeBaseName() + " Bounces";
+		: QFileInfo(projectFileName).absolutePath() + "/Bounces";
 	QDir().mkpath(dir);
 	QString base = track->name() + " - " + (clip->name().trimmed().isEmpty()
 		? tr("Takt %1").arg(begin.getBar() + 1) : clip->name().trimmed());
