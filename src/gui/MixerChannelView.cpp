@@ -55,6 +55,9 @@
 #include "PeakIndicator.h"
 #include "SendButtonIndicator.h"
 #include "Song.h"
+#include "MixerTrackSync.h"
+#include "Track.h"
+#include "embed.h"
 
 namespace lmms::gui {
 MixerChannelView::MixerChannelView(QWidget* parent, MixerView* mixerView, int channelIndex)
@@ -164,6 +167,7 @@ MixerChannelView::MixerChannelView(QWidget* parent, MixerView* mixerView, int ch
 	mainLayout->addWidget(m_sendKnob, 0, Qt::AlignHCenter);
 	mainLayout->addWidget(m_sendArrow, 0, Qt::AlignHCenter);
 	mainLayout->addWidget(m_channelNumberLcd, 0, Qt::AlignHCenter);
+	mainLayout->addSpacing(18); // Custom: room for the track type icon (painted in paintEvent)
 	mainLayout->addWidget(m_renameLineEditView, 1, Qt::AlignHCenter);
 	mainLayout->addLayout(soloMuteLayout);
 	mainLayout->addWidget(m_peakIndicator);
@@ -178,8 +182,10 @@ MixerChannelView::MixerChannelView(QWidget* parent, MixerView* mixerView, int ch
 void MixerChannelView::contextMenuEvent(QContextMenuEvent*)
 {
 	auto contextMenu = new CaptionMenu(mixerChannel()->m_name, this);
+	// Custom: track channels follow their track (position, existence)
+	const bool trackChannel = mixerChannel()->isTrackChannel();
 
-	if (!isMasterChannel()) // no move-options in master
+	if (!isMasterChannel() && !trackChannel) // no move-options in master
 	{
 		contextMenu->addAction(tr("Move &left"), this, &MixerChannelView::moveChannelLeft);
 		contextMenu->addAction(tr("Move &right"), this, &MixerChannelView::moveChannelRight);
@@ -188,7 +194,7 @@ void MixerChannelView::contextMenuEvent(QContextMenuEvent*)
 	contextMenu->addAction(tr("Rename &channel"), this, &MixerChannelView::renameChannel);
 	contextMenu->addSeparator();
 
-	if (!isMasterChannel()) // no remove-option in master
+	if (!isMasterChannel() && !trackChannel) // no remove-option in master
 	{
 		contextMenu->addAction(
 			embed::getIconPixmap("cancel"), tr("R&emove channel"), this, &MixerChannelView::removeChannel);
@@ -234,6 +240,24 @@ void MixerChannelView::paintEvent(QPaintEvent*)
 	// outer border
 	painter.setPen(isActive ? strokeOuterActive() : strokeOuterInactive());
 	painter.drawRect(0, 0, width - outerBorderSize, height - outerBorderSize);
+
+	// Custom: channels belonging to a track show the track type; group members/groups show the group color
+	if (const auto track = MixerTrackSync::trackByUid(channel->m_ownerUid))
+	{
+		const bool isGroup = track->type() == Track::Type::Group;
+		const auto group = isGroup ? track : MixerTrackSync::busGroupOf(track);
+		if (group != nullptr)
+		{
+			const QColor groupColor = group->color().value_or(QColor(143, 166, 192));
+			if (isGroup) { painter.fillRect(2, 2, width - 4, 5, groupColor); }   // bar on top: the group bus itself
+			else { painter.fillRect(2, 2, 4, height - 4, groupColor); }          // stripe on the left: member
+		}
+		const char* icon = isGroup ? "folder"
+			: track->type() == Track::Type::Sample ? "sample_track" : "instrument_track";
+		// below the channel number, above the name
+		const auto lcd = m_channelNumberLcd->geometry();
+		painter.drawPixmap(lcd.center().x() - 7, lcd.bottom() + 5, embed::getIconPixmap(icon, 14, 14));
+	}
 }
 
 void MixerChannelView::mousePressEvent(QMouseEvent*)
@@ -295,6 +319,13 @@ void MixerChannelView::renameFinished()
 	setFocus();
 
 	const auto mc = mixerChannel();
+	// Custom: renaming a track channel renames its track (the channel follows)
+	if (auto track = MixerTrackSync::trackByUid(mc->m_ownerUid); track != nullptr && !newName.isEmpty())
+	{
+		if (track->name() != newName) { track->setName(newName); }
+		setToolTip(newName);
+		return;
+	}
 	if (!newName.isEmpty() && mc->m_name != newName)
 	{
 		mc->m_name = newName;
@@ -307,6 +338,7 @@ void MixerChannelView::renameFinished()
 
 void MixerChannelView::resetColor()
 {
+	if (auto track = MixerTrackSync::trackByUid(mixerChannel()->m_ownerUid)) { track->setColor(std::nullopt); }
 	mixerChannel()->setColor(std::nullopt);
 	Engine::getSong()->setModified();
 	update();
@@ -323,6 +355,7 @@ void MixerChannelView::selectColor()
 	if (!newColor.isValid()) { return; }
 
 	channel->setColor(newColor);
+	if (auto track = MixerTrackSync::trackByUid(channel->m_ownerUid)) { track->setColor(newColor); }
 
 	Engine::getSong()->setModified();
 	update();
@@ -332,6 +365,7 @@ void MixerChannelView::randomizeColor()
 {
 	auto channel = mixerChannel();
 	channel->setColor(ColorChooser::getPalette(ColorChooser::Palette::Mixer)[fastRand(48)]);
+	if (auto track = MixerTrackSync::trackByUid(channel->m_ownerUid)) { track->setColor(channel->color()); }
 	Engine::getSong()->setModified();
 	update();
 }

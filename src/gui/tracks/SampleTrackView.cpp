@@ -131,6 +131,9 @@ SampleTrackView::~SampleTrackView()
 //FIXME: This is identical to InstrumentTrackView::createMixerMenu
 QMenu * SampleTrackView::createMixerMenu(QString title, QString newMixerLabel)
 {
+	// Custom: every track owns its mixer channel, no other assignment
+	return nullptr;
+
 	int channelIndex = model()->mixerChannelModel()->value();
 
 	MixerChannel *mixerChannel = Engine::mixer()->mixerChannel(channelIndex);

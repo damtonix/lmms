@@ -87,6 +87,12 @@ public:
 	auto color() const -> const std::optional<QColor>& { return m_color; }
 	void setColor(const std::optional<QColor>& color) { m_color = color; }
 
+	//! Custom: uid of the track (instrument, sample or group) this channel belongs to, empty = independent channel
+	QString m_ownerUid;
+	//! Custom: uid of the group whose channel is this channel's fixed bus ("" = master)
+	QString m_busOwnerUid;
+	bool isTrackChannel() const { return !m_ownerUid.isEmpty(); }
+
 	std::atomic_size_t m_dependenciesMet;
 	void incrementDeps();
 	void processed();
@@ -193,6 +199,12 @@ public:
 	void clear();
 
 	// re-arrange channels
+	//! Custom: new order of all channels, order[newIndex] = oldIndex (order[0] must be 0);
+	//! the mixer channel of every track is adjusted
+	void reorderChannels(const std::vector<int>& order);
+	//! Custom: index of the channel owned by the track with this uid, -1 if none
+	int channelOwnedBy(const QString& uid) const;
+
 	void moveChannelLeft(int index);
 	void moveChannelRight(int index);
 

@@ -36,6 +36,7 @@ class QDomElement;  // IWYU pragma: keep
 class QHBoxLayout;
 class QStackedLayout;
 class QScrollArea;
+class QSplitter;
 
 namespace lmms
 {
@@ -90,6 +91,9 @@ public:
 
 	void renameChannel(int index);
 
+	//! Custom: may the current channel send to the channel @p to? (track channels only feed their group bus)
+	bool sendAllowed(int from, int to) const;
+
 	// make sure the display syncs up with the mixer.
 	// useful for loading projects
 	void refreshDisplay();
@@ -119,6 +123,14 @@ private:
 	QScrollArea* channelArea;
 	QHBoxLayout* chLayout;
 	QWidget* m_channelAreaWidget;
+	// Custom: track channels (instruments, samples, groups) left of the splitter, independent channels right
+	QScrollArea* m_trackChannelArea = nullptr;
+	QHBoxLayout* m_trackChLayout = nullptr;
+	QWidget* m_trackChannelAreaWidget = nullptr;
+	QSplitter* m_splitter = nullptr;
+	class MixerTrackSync* m_trackSync = nullptr;
+	QHBoxLayout* layoutFor(int index) const;
+	QWidget* areaWidgetFor(int index) const;
 	QStackedLayout* m_racksLayout;
 	QWidget* m_racksWidget;
 	Mixer* m_mixer;

@@ -487,6 +487,55 @@ void Mixer::moveChannelLeft( int index )
 
 
 
+void Mixer::reorderChannels(const std::vector<int>& order)
+{
+	if (order.size() != m_mixerChannels.size() || order.empty() || order[0] != 0) { return; }
+	std::vector<int> oldToNew(order.size(), 0);
+	for (std::size_t n = 0; n < order.size(); ++n) { oldToNew[order[n]] = static_cast<int>(n); }
+
+	Engine::audioEngine()->requestChangeInModel();
+
+	for (const auto& trackList : {Engine::getSong()->tracks(), Engine::patternStore()->tracks()})
+	{
+		for (const auto& track : trackList)
+		{
+			IntModel* model = nullptr;
+			if (track->type() == Track::Type::Instrument) { model = static_cast<InstrumentTrack*>(track)->mixerChannelModel(); }
+			else if (track->type() == Track::Type::Sample) { model = static_cast<SampleTrack*>(track)->mixerChannelModel(); }
+			if (model == nullptr) { continue; }
+			const int val = model->value();
+			if (val >= 0 && static_cast<std::size_t>(val) < oldToNew.size()) { model->setValue(oldToNew[val]); }
+		}
+	}
+
+	std::vector<MixerChannel*> channels(order.size());
+	for (std::size_t n = 0; n < order.size(); ++n)
+	{
+		channels[n] = m_mixerChannels[order[n]];
+		channels[n]->setIndex(static_cast<int>(n));
+	}
+	m_mixerChannels = channels;
+	if (m_lastSoloed >= 0) { m_lastSoloed = oldToNew[m_lastSoloed]; }
+	for (auto ch : m_mixerChannels)
+	{
+		for (auto r : ch->m_sends) { r->updateName(); }
+	}
+
+	Engine::audioEngine()->doneChangeInModel();
+}
+
+int Mixer::channelOwnedBy(const QString& uid) const
+{
+	if (uid.isEmpty()) { return -1; }
+	for (std::size_t i = 1; i < m_mixerChannels.size(); ++i)
+	{
+		if (m_mixerChannels[i]->m_ownerUid == uid) { return static_cast<int>(i); }
+	}
+	return -1;
+}
+
+
+
 void Mixer::moveChannelRight( int index )
 {
 	moveChannelLeft( index + 1 );
@@ -772,6 +821,8 @@ void Mixer::clearChannel(mix_ch_t index)
 	ch->m_muteModel.setDisplayName( ch->m_name + ">" + tr( "Mute" ) );
 	ch->m_soloModel.setDisplayName( ch->m_name + ">" + tr( "Solo" ) );
 	ch->setColor(std::nullopt);
+	ch->m_ownerUid.clear();
+	ch->m_busOwnerUid.clear();
 
 	// send only to master
 	if( index > 0)
@@ -810,6 +861,11 @@ void Mixer::saveSettings( QDomDocument & _doc, QDomElement & _this )
 		mixch.setAttribute("num", static_cast<qulonglong>(i));
 		mixch.setAttribute( "name", ch->m_name );
 		if (const auto& color = ch->color()) { mixch.setAttribute("color", color->name()); }
+		if (ch->isTrackChannel())
+		{
+			mixch.setAttribute("owner", ch->m_ownerUid);
+			mixch.setAttribute("busowner", ch->m_busOwnerUid);
+		}
 
 		// add the channel sends
 		for (const auto& send : ch->m_sends)
@@ -856,6 +912,8 @@ void Mixer::loadSettings( const QDomElement & _this )
 		m_mixerChannels[num]->m_muteModel.loadSettings( mixch, "muted" );
 		m_mixerChannels[num]->m_soloModel.loadSettings( mixch, "soloed" );
 		m_mixerChannels[num]->m_name = mixch.attribute( "name" );
+		m_mixerChannels[num]->m_ownerUid = mixch.attribute("owner");
+		m_mixerChannels[num]->m_busOwnerUid = mixch.attribute("busowner");
 		if (mixch.hasAttribute("color"))
 		{
 			m_mixerChannels[num]->setColor(QColor{mixch.attribute("color")});

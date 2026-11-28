@@ -390,6 +390,9 @@ void InstrumentTrackView::midiConfigChanged()
 //FIXME: This is identical to SampleTrackView::createMixerMenu
 QMenu * InstrumentTrackView::createMixerMenu(QString title, QString newMixerLabel)
 {
+	// Custom: every track owns its mixer channel, no other assignment
+	return nullptr;
+
 	int channelIndex = model()->mixerChannelModel()->value();
 
 	MixerChannel *mixerChannel = Engine::mixer()->mixerChannel( channelIndex );

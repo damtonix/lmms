@@ -43,40 +43,49 @@ void MixerChannelLcdSpinBox::setTrackView(TrackView * tv)
 
 void MixerChannelLcdSpinBox::mouseDoubleClickEvent(QMouseEvent* event)
 {
-	if (!(event->modifiers() & Qt::ShiftModifier) &&
-		!(event->modifiers() & Qt::ControlModifier))
+	event->accept();
+}
+
+void MixerChannelLcdSpinBox::mousePressEvent(QMouseEvent* event)
+{
+	if (event->button() == Qt::LeftButton)
 	{
-		enterValue();
-		return;
+		// show the track's own channel in the mixer
+		auto mixer = getGUI()->mixerView();
+		mixer->setCurrentMixerChannel(model()->value());
+		mixer->parentWidget()->show();
+		mixer->show();
+		mixer->setFocus();
 	}
+	event->accept();
+}
 
-	getGUI()->mixerView()->setCurrentMixerChannel(model()->value());
+void MixerChannelLcdSpinBox::mouseMoveEvent(QMouseEvent* event)
+{
+	event->accept();
+}
 
-	getGUI()->mixerView()->parentWidget()->show();
-	getGUI()->mixerView()->show();// show Mixer window
-	getGUI()->mixerView()->setFocus();// set focus to Mixer window
-	//engine::getMixerView()->raise();
+void MixerChannelLcdSpinBox::mouseReleaseEvent(QMouseEvent* event)
+{
+	if (event != nullptr) { event->accept(); }
+}
+
+void MixerChannelLcdSpinBox::wheelEvent(QWheelEvent* event)
+{
+	event->accept();
 }
 
 void MixerChannelLcdSpinBox::contextMenuEvent(QContextMenuEvent* event)
 {
-	// for the case, the user clicked right while pressing left mouse-
-	// button, the context-menu appears while mouse-cursor is still hidden
-	// and it isn't shown again until user does something which causes
-	// an QApplication::restoreOverrideCursor()-call...
-	mouseReleaseEvent(nullptr);
-
 	QPointer<CaptionMenu> contextMenu = new CaptionMenu(model()->displayName(), this);
-
-	if (QMenu *mixerMenu = m_tv->createMixerMenu(
-		tr("Assign to:"), tr("New Mixer Channel")))
-	{
-		contextMenu->addMenu(mixerMenu);
-
-		contextMenu->addSeparator();
-	}
-	addDefaultActions(contextMenu);
+	contextMenu->addAction(tr("Im Mixer zeigen"), this, [this] {
+		auto mixer = getGUI()->mixerView();
+		mixer->setCurrentMixerChannel(model()->value());
+		mixer->parentWidget()->show();
+		mixer->show();
+	});
 	contextMenu->exec(QCursor::pos());
+	delete contextMenu;
 }
 
 void MixerChannelLcdSpinBox::enterValue()

@@ -36,6 +36,10 @@
 #include <QKeyEvent>
 #include <QStackedLayout>
 #include <QStackedWidget>
+#include <QSplitter>
+
+#include "ConfigManager.h"
+#include "MixerTrackSync.h"
 
 #include "EffectRackView.h"
 #include "Engine.h"
@@ -90,6 +94,14 @@ MixerView::MixerView(Mixer* mixer) :
 	chLayout->setAlignment(Qt::AlignLeft);
 	m_channelAreaWidget->setLayout(chLayout);
 
+	// Custom: area for the channels belonging to tracks
+	m_trackChannelAreaWidget = new QWidget;
+	m_trackChLayout = new QHBoxLayout(m_trackChannelAreaWidget);
+	m_trackChLayout->setSizeConstraint(QLayout::SetMinimumSize);
+	m_trackChLayout->setSpacing(0);
+	m_trackChLayout->setContentsMargins(0, 0, 0, 0);
+	m_trackChLayout->setAlignment(Qt::AlignLeft);
+
 	// create rack layout before creating the first channel
 	m_racksWidget = new QWidget;
 	m_racksLayout = new QStackedLayout(m_racksWidget);
@@ -111,9 +123,9 @@ MixerView::MixerView(Mixer* mixer) :
 	// add mixer channels
 	for (int i = 1; i < m_mixerChannelViews.size(); ++i)
 	{
-		m_mixerChannelViews[i] = new MixerChannelView(m_channelAreaWidget, this, i);
+		m_mixerChannelViews[i] = new MixerChannelView(areaWidgetFor(i), this, i);
 		connectToSoloAndMute(i);
-		chLayout->addWidget(m_mixerChannelViews[i]);
+		layoutFor(i)->addWidget(m_mixerChannelViews[i]);
 	}
 
 	// add the scrolling section to the main layout
@@ -131,17 +143,44 @@ MixerView::MixerView(Mixer* mixer) :
 		private:
 			MixerView* m_mv;
 	};
-	channelArea = new ChannelArea(this, this);
-	channelArea->setWidget(m_channelAreaWidget);
-	channelArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-	channelArea->setFrameStyle(QFrame::NoFrame);
-	channelArea->setMinimumWidth(mixerChannelSize.width() * 6);
-	channelArea->setWidgetResizable(true);
-
 	int const scrollBarExtent = style()->pixelMetric(QStyle::PM_ScrollBarExtent);
-	channelArea->setMinimumHeight(mixerChannelSize.height() + scrollBarExtent);
+	const auto makeArea = [&](QWidget* content) {
+		auto area = new ChannelArea(this, this);
+		area->setWidget(content);
+		area->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+		area->setFrameStyle(QFrame::NoFrame);
+		area->setMinimumWidth(mixerChannelSize.width());
+		area->setWidgetResizable(true);
+		area->setMinimumHeight(mixerChannelSize.height() + scrollBarExtent);
+		return area;
+	};
+	m_trackChannelArea = makeArea(m_trackChannelAreaWidget);
+	channelArea = makeArea(m_channelAreaWidget);
 
-	ml->addWidget(channelArea, 1);
+	// Custom: movable divider between the track channels and the independent channels
+	m_splitter = new QSplitter(Qt::Horizontal, this);
+	m_splitter->setChildrenCollapsible(false);
+	m_splitter->setHandleWidth(7);
+	m_splitter->setStyleSheet("QSplitter::handle { background: #5c636c; margin: 0 2px; }");
+	m_splitter->addWidget(m_trackChannelArea);
+	m_splitter->addWidget(channelArea);
+	m_splitter->setStretchFactor(0, 3);
+	m_splitter->setStretchFactor(1, 1);
+	const auto sizes = ConfigManager::inst()->value("ui", "mixersplitter").split(",");
+	if (sizes.size() == 2 && sizes[0].toInt() > 0 && sizes[1].toInt() > 0)
+	{
+		m_splitter->setSizes({sizes[0].toInt(), sizes[1].toInt()});
+	}
+	else
+	{
+		m_splitter->setSizes({mixerChannelSize.width() * 6, mixerChannelSize.width() * 3});
+	}
+	connect(m_splitter, &QSplitter::splitterMoved, this, [this] {
+		const auto s = m_splitter->sizes();
+		if (s.size() == 2) { ConfigManager::inst()->setValue("ui", "mixersplitter", QString("%1,%2").arg(s[0]).arg(s[1])); }
+	});
+
+	ml->addWidget(m_splitter, 1);
 
 	// show the add new mixer channel button
 	auto newChannelBtn = new QPushButton(embed::getIconPixmap("new_channel"), QString(), this);
@@ -175,6 +214,30 @@ MixerView::MixerView(Mixer* mixer) :
 
 	// we want to receive dataChanged-signals in order to update
 	setModel(mixer);
+
+	// Custom: every track owns its channel
+	m_trackSync = new MixerTrackSync(this);
+}
+
+
+QHBoxLayout* MixerView::layoutFor(int index) const
+{
+	return index > 0 && m_mixer->mixerChannel(index)->isTrackChannel() ? m_trackChLayout : chLayout;
+}
+
+QWidget* MixerView::areaWidgetFor(int index) const
+{
+	return index > 0 && m_mixer->mixerChannel(index)->isTrackChannel() ? m_trackChannelAreaWidget : m_channelAreaWidget;
+}
+
+bool MixerView::sendAllowed(int from, int to) const
+{
+	if (from == to || from < 0 || to < 0) { return false; }
+	const auto source = m_mixer->mixerChannel(from);
+	const auto target = m_mixer->mixerChannel(to);
+	// independent channels and master can always be fed; a track channel only by the members of its group
+	if (!target->isTrackChannel()) { return true; }
+	return source->isTrackChannel() && source->m_busOwnerUid == target->m_ownerUid;
 }
 
 
@@ -209,20 +272,22 @@ void MixerView::refreshDisplay()
 
 		auto * mixerChannelView = m_mixerChannelViews[i];
 		chLayout->removeWidget(mixerChannelView);
+		m_trackChLayout->removeWidget(mixerChannelView);
 		m_racksLayout->removeWidget(mixerChannelView->m_effectRackView);
 
 		delete mixerChannelView;
 	}
 	m_channelAreaWidget->adjustSize();
+	m_trackChannelAreaWidget->adjustSize();
 
 	// re-add the views
 	m_mixerChannelViews.resize(getMixer()->numChannels());
 	for (int i = 1; i < m_mixerChannelViews.size(); ++i)
 	{
-		m_mixerChannelViews[i] = new MixerChannelView(m_channelAreaWidget, this, i);
+		m_mixerChannelViews[i] = new MixerChannelView(areaWidgetFor(i), this, i);
 		connectToSoloAndMute(i);
 
-		chLayout->addWidget(m_mixerChannelViews[i]);
+		layoutFor(i)->addWidget(m_mixerChannelViews[i]);
 		m_racksLayout->addWidget(m_mixerChannelViews[i]->m_effectRackView);
 	}
 
@@ -372,7 +437,8 @@ void MixerView::updateMixerChannel(int index)
 	}
 	else
 	{
-		thisLine->m_receiveArrowOrSendButton->setVisible(!mixer->isInfiniteLoop(currentIndex, index));
+		thisLine->m_receiveArrowOrSendButton->setVisible(!mixer->isInfiniteLoop(currentIndex, index)
+			&& sendAllowed(currentIndex, index));
 		thisLine->m_receiveArrowOrSendButton->setCurrentIndex(thisLine->m_sendButtonStackedIndex);
 	}
 
@@ -402,6 +468,7 @@ void MixerView::deleteChannel(int index)
 	mixer->deleteChannel(index);
 
 	chLayout->removeWidget(m_mixerChannelViews[index]);
+	m_trackChLayout->removeWidget(m_mixerChannelViews[index]);
 	m_racksLayout->removeWidget(m_mixerChannelViews[index]);
 	// delete MixerChannelView later to prevent a crash when deleting from context menu
 	m_mixerChannelViews[index]->hide();
@@ -432,7 +499,7 @@ void MixerView::deleteUnusedChannels()
 	// Check all channels except master, delete those with no incoming sends
 	for (int i = m_mixerChannelViews.size() - 1; i > 0; --i)
 	{
-		if (!mix->isChannelInUse(i))
+		if (!mix->isChannelInUse(i) && !mix->mixerChannel(i)->isTrackChannel())
 		{
 			deleteChannel(i);
 		}
@@ -443,6 +510,8 @@ void MixerView::moveChannelLeft(int index)
 {
 	// can't move master or first channel left or last channel right
 	if (index <= 1 || index >= m_mixerChannelViews.size()) { return; }
+	// Custom: track channels follow the track order; independent channels stay right of them
+	if (m_mixer->mixerChannel(index)->isTrackChannel() || m_mixer->mixerChannel(index - 1)->isTrackChannel()) { return; }
 
 	m_mixer->moveChannelLeft(index);
 
@@ -487,6 +556,8 @@ void MixerView::keyPressEvent(QKeyEvent * e)
 	switch(e->key())
 	{
 		case Qt::Key_Delete:
+			// Custom: track channels go away with their track
+			if (getMixer()->mixerChannel(m_currentMixerChannel->channelIndex())->isTrackChannel()) { break; }
 			deleteChannel(m_currentMixerChannel->channelIndex());
 			break;
 		case Qt::Key_Left:

@@ -30,6 +30,7 @@ SET(LMMS_SRCS
 	gui/MidiSetupWidget.cpp
 	gui/MixerChannelView.cpp
 	gui/MixerView.cpp
+	gui/MixerTrackSync.cpp
 	gui/ModelView.cpp
 	gui/PeakControllerDialog.cpp
 	gui/PluginBrowser.cpp
