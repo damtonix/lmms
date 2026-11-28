@@ -44,6 +44,7 @@ class PatternEditor : public TrackContainerView
 {
 	Q_OBJECT
 public:
+	void trackHeadWidthChanged() override; //!< Custom
 	PatternEditor(PatternStore* ps);
 
 	bool fixedClips() const override

@@ -25,6 +25,8 @@
 
 #include "TrackView.h"
 
+#include <algorithm>
+
 #include <QApplication>
 #include <QHBoxLayout>
 #include <QMouseEvent>
@@ -61,6 +63,119 @@
 
 namespace lmms::gui
 {
+
+namespace
+{
+//! Custom: thin handle at the right edge of the track header; dragging it changes the header width of all tracks
+class HeaderResizeHandle : public QWidget
+{
+public:
+	explicit HeaderResizeHandle(QWidget* parent) : QWidget(parent)
+	{
+		setCursor(Qt::SizeHorCursor);
+		setToolTip(TrackView::tr("Ziehen: Spurk\xc3\xb6pfe breiter/schmaler, Doppelklick: Standardbreite"));
+	}
+
+protected:
+	void mousePressEvent(QMouseEvent* event) override
+	{
+		if (event->button() != Qt::LeftButton) { return; }
+		m_startX = event->globalPos().x();
+		m_startExtra = TrackView::headerExtraWidth();
+		m_dragging = true;
+		event->accept();
+	}
+	void mouseMoveEvent(QMouseEvent* event) override
+	{
+		if (!m_dragging) { return; }
+		TrackView::setHeaderExtraWidth(m_startExtra + event->globalPos().x() - m_startX);
+		event->accept();
+	}
+	void mouseReleaseEvent(QMouseEvent* event) override
+	{
+		m_dragging = false;
+		event->accept();
+	}
+	void mouseDoubleClickEvent(QMouseEvent* event) override
+	{
+		TrackView::setHeaderExtraWidth(0);
+		event->accept();
+	}
+
+private:
+	bool m_dragging = false;
+	int m_startX = 0;
+	int m_startExtra = 0;
+};
+} // namespace
+
+
+int TrackView::s_headerExtraWidth = -1;
+
+int TrackView::headerExtraWidth()
+{
+	if (s_headerExtraWidth < 0)
+	{
+		s_headerExtraWidth = std::clamp(ConfigManager::inst()->value("ui", "trackheaderextra").toInt(), 0, 400);
+	}
+	return s_headerExtraWidth;
+}
+
+int TrackView::settingsWidgetWidth()
+{
+	const bool compact = ConfigManager::inst()->value("ui", "compacttrackbuttons").toInt() == 1;
+	return (compact ? DEFAULT_SETTINGS_WIDGET_WIDTH_COMPACT : DEFAULT_SETTINGS_WIDGET_WIDTH) + headerExtraWidth();
+}
+
+int TrackView::headerWidth()
+{
+	const bool compact = ConfigManager::inst()->value("ui", "compacttrackbuttons").toInt() == 1;
+	return (compact ? TRACK_OP_WIDTH_COMPACT : TRACK_OP_WIDTH) + settingsWidgetWidth();
+}
+
+void TrackView::setHeaderExtraWidth(int px)
+{
+	px = std::clamp(px, 0, 400);
+	if (px == headerExtraWidth()) { return; }
+	s_headerExtraWidth = px;
+	ConfigManager::inst()->setValue("ui", "trackheaderextra", QString::number(px));
+
+	auto gui = getGUI();
+	if (gui == nullptr) { return; }
+	std::vector<TrackContainerView*> editors;
+	if (gui->songEditor()) { editors.push_back(gui->songEditor()->m_editor); }
+	if (gui->patternEditor()) { editors.push_back(gui->patternEditor()->m_editor); }
+	for (auto editor : editors)
+	{
+		for (auto tv : editor->trackViews())
+		{
+			tv->applyHeaderWidth();
+			tv->resizeEvent(nullptr);
+		}
+		editor->trackHeadWidthChanged();
+	}
+}
+
+void TrackView::applyHeaderWidth()
+{
+	const int delta = headerExtraWidth() - m_appliedHeaderExtra;
+	if (delta == 0) { return; }
+	auto settings = &m_trackSettingsWidget;
+	auto label = settings->findChild<TrackLabelButton*>(QString(), Qt::FindDirectChildrenOnly);
+	if (label == nullptr) { return; } // not built yet (applied again from the constructor timer)
+	if (settings->layout() == nullptr)
+	{
+		// absolutely positioned widgets right of the name (e.g. the group color button) move along
+		for (auto child : settings->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly))
+		{
+			if (child != label && child->x() > label->x()) { child->move(child->x() + delta, child->y()); }
+		}
+	}
+	label->setFixedWidth(label->width() + delta);
+	m_appliedHeaderExtra += delta;
+	m_trackSettingsWidget.setFixedWidth(settingsWidgetWidth());
+}
+
 
 TrackView::TrackView(Track* track, TrackContainerView* tcv)
 	: QWidget(tcv->contentWidget())
@@ -143,6 +258,13 @@ TrackView::TrackView(Track* track, TrackContainerView* tcv)
 	// Custom: apply the group indent / frozen state once the derived view has created its widgets
 	QTimer::singleShot(0, this, &TrackView::applyGroupIndent);
 	QTimer::singleShot(0, this, &TrackView::updateFrozenState);
+	QTimer::singleShot(0, this, &TrackView::applyHeaderWidth);
+
+	// Custom: drag the right edge of the header to make the name/group area wider
+	m_headerResizeHandle = new HeaderResizeHandle(this);
+	m_headerResizeHandle->setGeometry(headerWidth() - 3, 0, 6, height());
+	m_headerResizeHandle->show();
+	m_headerResizeHandle->raise();
 }
 
 
@@ -154,12 +276,16 @@ void TrackView::resizeEvent( QResizeEvent * re )
 					  "compacttrackbuttons" ).toInt() )
 	{
 		m_trackOperationsWidget.setFixedSize( TRACK_OP_WIDTH_COMPACT, height() - 1 );
-		m_trackSettingsWidget.setFixedSize( DEFAULT_SETTINGS_WIDGET_WIDTH_COMPACT, height() - 1 );
 	}
 	else
 	{
 		m_trackOperationsWidget.setFixedSize( TRACK_OP_WIDTH, height() - 1 );
-		m_trackSettingsWidget.setFixedSize( DEFAULT_SETTINGS_WIDGET_WIDTH, height() - 1 );
+	}
+	m_trackSettingsWidget.setFixedSize(settingsWidgetWidth(), height() - 1);
+	if (m_headerResizeHandle)
+	{
+		m_headerResizeHandle->setGeometry(headerWidth() - 3, 0, 6, height());
+		m_headerResizeHandle->raise();
 	}
 
 	m_trackContentWidget.setFixedHeight( height() );
@@ -258,10 +384,7 @@ void TrackView::mousePressEvent( QMouseEvent * me )
 	}
 
 
-	int widgetTotal = ConfigManager::inst()->value( "ui",
-							"compacttrackbuttons" ).toInt()==1 ?
-		DEFAULT_SETTINGS_WIDGET_WIDTH_COMPACT + TRACK_OP_WIDTH_COMPACT :
-		DEFAULT_SETTINGS_WIDGET_WIDTH + TRACK_OP_WIDTH;
+	int widgetTotal = headerWidth();
 	if (m_trackContainerView->allowRubberband() == true  && pos.x() > widgetTotal)
 	{
 		QWidget::mousePressEvent( me );
@@ -290,10 +413,7 @@ void TrackView::mouseMoveEvent( QMouseEvent * me )
 {
 	const auto pos = position(me);
 
-	int widgetTotal = ConfigManager::inst()->value( "ui",
-							"compacttrackbuttons" ).toInt()==1 ?
-		DEFAULT_SETTINGS_WIDGET_WIDTH_COMPACT + TRACK_OP_WIDTH_COMPACT :
-		DEFAULT_SETTINGS_WIDGET_WIDTH + TRACK_OP_WIDTH;
+	int widgetTotal = headerWidth();
 	if (m_trackContainerView->allowRubberband() == true && pos.x() > widgetTotal)
 	{
 		QWidget::mouseMoveEvent( me );

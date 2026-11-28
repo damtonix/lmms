@@ -92,9 +92,7 @@ SongEditor::SongEditor( Song * song ) :
 	m_rubberBandStartTrackview(0),
 	m_rubberbandStartTimePos(0),
 	m_rubberbandPixelsPerBar(DEFAULT_PIXELS_PER_BAR),
-	m_trackHeadWidth(ConfigManager::inst()->value("ui", "compacttrackbuttons").toInt()==1
-					 ? DEFAULT_SETTINGS_WIDGET_WIDTH_COMPACT + TRACK_OP_WIDTH_COMPACT
-					 : DEFAULT_SETTINGS_WIDGET_WIDTH + TRACK_OP_WIDTH),
+	m_trackHeadWidth(TrackView::headerWidth()),
 	m_selectRegion(false)
 {
 	// Set up timeline
@@ -760,16 +758,12 @@ static inline void animateScroll( QScrollBar *scrollBar, int newVal, bool smooth
 void SongEditor::updatePosition()
 {
 	const TimePos& t = m_timeLine->timeline()->pos();
-	const bool compactTrackButtons = ConfigManager::inst()->value("ui", "compacttrackbuttons").toInt();
-	const auto widgetWidth = compactTrackButtons ? DEFAULT_SETTINGS_WIDGET_WIDTH_COMPACT : DEFAULT_SETTINGS_WIDGET_WIDTH;
-	const auto trackOpWidth = compactTrackButtons ? TRACK_OP_WIDTH_COMPACT : TRACK_OP_WIDTH;
 
 	if ((m_song->isPlaying() && m_song->m_playMode == Song::PlayMode::Song)
 							|| m_scrollBack)
 	{
 		m_smoothScroll = ConfigManager::inst()->value( "ui", "smoothscroll" ).toInt();
-		const int w = width() - widgetWidth
-							- trackOpWidth
+		const int w = width() - TrackView::headerWidth()
 							- contentWidget()->verticalScrollBar()->width(); // width of right scrollbar
 		
 		if (m_timeLine->autoScroll() == TimeLineWidget::AutoScrollState::Stepped)
@@ -793,13 +787,22 @@ void SongEditor::updatePosition()
 
 
 
+void SongEditor::trackHeadWidthChanged()
+{
+	m_trackHeadWidth = TrackView::headerWidth();
+	m_timeLine->setXOffset(m_trackHeadWidth);
+	m_timeLine->update();
+	if (m_markerBar != nullptr) { m_markerBar->setXOffset(m_trackHeadWidth); }
+	updatePositionLine();
+}
+
+
+
+
 void SongEditor::updatePositionLine()
 {
-	const bool compactTrackButtons = ConfigManager::inst()->value("ui", "compacttrackbuttons").toInt();
-	const auto widgetWidth = compactTrackButtons ? DEFAULT_SETTINGS_WIDGET_WIDTH_COMPACT : DEFAULT_SETTINGS_WIDGET_WIDTH;
-	const auto trackOpWidth = compactTrackButtons ? TRACK_OP_WIDTH_COMPACT : TRACK_OP_WIDTH;
 	const int x = m_timeLine->markerX(m_timeLine->timeline()->pos());
-	if( x >= trackOpWidth + widgetWidth -1 )
+	if( x >= TrackView::headerWidth() - 1 )
 	{
 		m_positionLine->show();
 		m_positionLine->move( x-( m_positionLine->width() - 1 ), headerHeight() );

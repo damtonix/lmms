@@ -101,6 +101,9 @@ public:
 
 	const TrackView * trackViewAt( const int _y ) const;
 
+	//! Custom: the width of the track headers changed (timeline offsets etc.)
+	virtual void trackHeadWidthChanged() {}
+
 	virtual bool allowRubberband() const;
 	virtual bool knifeMode() const;
 

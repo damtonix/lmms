@@ -132,6 +132,17 @@ public slots:
 	//! Custom: highlight all tracks routed to this mixer channel (<= 0: none)
 	static void setMixerHighlight(int channel);
 
+	//! Custom: extra width (px) of the track headers (name/group area), set by dragging their right edge
+	static int headerExtraWidth();
+	//! Custom: sets the extra header width for all track views (saved in the config)
+	static void setHeaderExtraWidth(int px);
+	//! Custom: width of the settings area (name, knobs, ...) including the extra width
+	static int settingsWidgetWidth();
+	//! Custom: total width of the track header (operations + settings area)
+	static int headerWidth();
+	//! Custom: widen/shrink the name button to the current extra header width
+	void applyHeaderWidth();
+
 
 protected:
 	//! @brief Register that the model of this track View has changed.
@@ -233,6 +244,9 @@ private:
 	QWidget* m_groupIndentBar = nullptr; //!< Custom: colored bar in the indent area
 	QToolButton* m_foldButton = nullptr; //!< Custom: fold arrow for tracks with child tracks
 	QWidget* m_frozenOverlay = nullptr;  //!< Custom: shown over the content of frozen/muted tracks
+	QWidget* m_headerResizeHandle = nullptr; //!< Custom: drag handle at the right edge of the header
+	int m_appliedHeaderExtra = 0;        //!< Custom: extra header width applied to the name button
+	static int s_headerExtraWidth;       //!< Custom: -1 = not yet read from the config
 
 	virtual FadeButton * getActivityIndicator()
 	{

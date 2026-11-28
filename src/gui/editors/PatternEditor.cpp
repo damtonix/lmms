@@ -49,9 +49,7 @@ namespace lmms::gui
 PatternEditor::PatternEditor(PatternStore* ps) :
 	TrackContainerView(ps),
 	m_ps(ps),
-	m_trackHeadWidth(ConfigManager::inst()->value("ui", "compacttrackbuttons").toInt() == 1
-		? DEFAULT_SETTINGS_WIDGET_WIDTH_COMPACT + TRACK_OP_WIDTH_COMPACT
-		: DEFAULT_SETTINGS_WIDGET_WIDTH + TRACK_OP_WIDTH),
+	m_trackHeadWidth(TrackView::headerWidth()),
 	m_maxClipLength(TimePos::ticksPerBar())
 {
 	setModel(ps);
@@ -199,6 +197,14 @@ void PatternEditor::updatePosition()
 		trackView->update();
 	}
 	emit positionChanged(m_currentPosition);
+}
+
+void PatternEditor::trackHeadWidthChanged()
+{
+	m_trackHeadWidth = TrackView::headerWidth();
+	m_timeLine->setXOffset(m_trackHeadWidth);
+	updatePixelsPerBar();
+	m_timeLine->update();
 }
 
 void PatternEditor::updatePixelsPerBar()

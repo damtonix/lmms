@@ -57,6 +57,7 @@ class SongEditor : public TrackContainerView
 {
 	Q_OBJECT
 public:
+	void trackHeadWidthChanged() override; //!< Custom
 	enum class EditMode
 	{
 		Draw,

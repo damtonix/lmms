@@ -24,6 +24,7 @@ class SongEditor;
 class ArrangementMarkerBar : public QWidget
 {
 public:
+	void setXOffset(int x) { m_xOffset = x; update(); } //!< Custom: track header width changed
 	ArrangementMarkerBar(SongEditor* editor, int xOffset);
 
 	static QColor defaultColor(int index);
