@@ -33,6 +33,7 @@ SET(LMMS_PLUGIN_LIST
 	Compressor
 	CrossoverEQ
 	Delay
+	PthDelay
 	Dispersion
 	DualFilter
 	DynamicsProcessor
