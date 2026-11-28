@@ -263,7 +263,8 @@ InstrumentTrackWindow::InstrumentTrackWindow( InstrumentTrackView * _itv ) :
 
 	m_tabWidget->addTab(m_ssView, tr("Envelope, filter & LFO"), "env_lfo_tab", 1);
 	m_tabWidget->addTab(m_instrumentFunctionsView, tr("Chord stacking & arpeggio"), "func_tab", 2);
-	m_tabWidget->addTab(m_effectView, tr("Effects"), "fx_tab", 3);
+	// Custom (PtH-LMMS): effects only live in the track's mixer channel (CHAN opens it)
+	m_effectView->hide();
 	m_tabWidget->addTab(m_midiView, tr("MIDI"), "midi_tab", 4);
 	m_tabWidget->addTab(m_tuningView, tr("Tuning and transposition"), "tuning_tab", 5);
 

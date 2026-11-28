@@ -223,4 +223,34 @@ void EffectChain::clear()
 	m_enabledModel.setValue( false );
 }
 
+bool EffectChain::moveAllEffectsTo(EffectChain& target)
+{
+	if (m_effects.empty() || &target == this) { return false; }
+
+	const bool sourceOn = m_enabledModel.value();
+	const bool targetOn = target.m_enabledModel.value();
+
+	Engine::audioEngine()->requestChangeInModel();
+	for (auto effect : m_effects)
+	{
+		if (!sourceOn) { effect->m_enabledModel.setValue(false); }
+		effect->setParent(&target);
+		effect->m_parent = &target;
+	}
+	if (!targetOn)
+	{
+		// the target chain was switched off: its effects stay silent once the chain is on
+		for (auto effect : target.m_effects) { effect->m_enabledModel.setValue(false); }
+	}
+	target.m_effects.insert(target.m_effects.begin(), m_effects.begin(), m_effects.end());
+	m_effects.clear();
+	Engine::audioEngine()->doneChangeInModel();
+
+	m_enabledModel.setValue(false);
+	target.m_enabledModel.setValue(true);
+	emit dataChanged();
+	emit target.dataChanged();
+	return true;
+}
+
 } // namespace lmms

@@ -69,6 +69,13 @@ public:
 
 	void clear();
 
+	//! Custom (PtH-LMMS): move all effects (objects, so automation stays linked) to the front of
+	//! `target`; the effects keep sounding the same (a disabled chain gives disabled effects).
+	//! Returns false if there was nothing to move.
+	bool moveAllEffectsTo(EffectChain& target);
+
+	bool isEmpty() const { return m_effects.empty(); }
+
 
 private:
 	using EffectList = std::vector<Effect*>;

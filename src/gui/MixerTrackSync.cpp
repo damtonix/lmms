@@ -11,6 +11,8 @@
 
 #include <QDomDocument>
 
+#include "AudioBusHandle.h"
+#include "EffectChain.h"
 #include "Engine.h"
 #include "GroupTrack.h"
 #include "GuiApplication.h"
@@ -34,6 +36,13 @@ IntModel* channelModelOf(Track* track)
 {
 	if (track->type() == Track::Type::Instrument) { return static_cast<InstrumentTrack*>(track)->mixerChannelModel(); }
 	if (track->type() == Track::Type::Sample) { return static_cast<SampleTrack*>(track)->mixerChannelModel(); }
+	return nullptr;
+}
+
+EffectChain* trackEffectsOf(Track* track)
+{
+	if (track->type() == Track::Type::Instrument) { return static_cast<InstrumentTrack*>(track)->audioBusHandle()->effects(); }
+	if (track->type() == Track::Type::Sample) { return static_cast<SampleTrack*>(track)->audioBusHandle()->effects(); }
 	return nullptr;
 }
 
@@ -140,6 +149,11 @@ void MixerTrackSync::watchTrack(Track* track)
 	{
 		connect(model, &IntModel::dataChanged, this, &MixerTrackSync::scheduleSync, Qt::UniqueConnection);
 	}
+	if (auto fx = trackEffectsOf(track))
+	{
+		// effects arriving in the track (old project, preset) move to its channel
+		connect(fx, &EffectChain::dataChanged, this, &MixerTrackSync::scheduleSync, Qt::UniqueConnection);
+	}
 }
 
 
@@ -160,6 +174,7 @@ void MixerTrackSync::sync()
 	Mixer* mx = Engine::mixer();
 	bool structure = false;
 	bool cosmetic = false;
+	bool fxMoved = false;
 	MixerChannel* selected = m_view->currentMixerChannel() != nullptr
 		? mx->mixerChannel(m_view->currentMixerChannel()->channelIndex()) : nullptr;
 
@@ -243,6 +258,12 @@ void MixerTrackSync::sync()
 			}
 		}
 		if (model != nullptr && model->value() != idx) { model->setValue(idx); }
+
+		// effects only live in the mixer channel: move those of the track there (in front, same sound)
+		if (auto fx = trackEffectsOf(track); fx != nullptr && !fx->isEmpty())
+		{
+			if (fx->moveAllEffectsTo(mx->mixerChannel(idx)->m_fxChain)) { fxMoved = true; }
+		}
 	}
 
 	// 3. fixed bus routing, name, color
@@ -317,7 +338,8 @@ void MixerTrackSync::sync()
 		if (selected != nullptr) { m_view->setCurrentMixerChannel(selected->index()); }
 		if (!song->isLoadingProject()) { song->setModified(); }
 	}
-	else if (cosmetic)
+	else if (fxMoved && !song->isLoadingProject()) { song->setModified(); }
+	if (!structure && cosmetic)
 	{
 		for (int i = 0; i < mx->numChannels(); ++i) { m_view->updateMixerChannel(i); }
 	}

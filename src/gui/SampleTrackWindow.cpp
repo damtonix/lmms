@@ -152,6 +152,7 @@ SampleTrackWindow::SampleTrackWindow(SampleTrackView* stv)
 
 	vlayout->addWidget(generalSettingsWidget);
 	vlayout->addWidget(m_effectRack);
+	m_effectRack->hide(); // Custom (PtH-LMMS): effects only live in the track's mixer channel
 
 
 	setModel(stv->model());
